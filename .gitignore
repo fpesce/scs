@@ -1,0 +1,13 @@
+
+*.txt
+
+# artefact
+*.scs
+scs
+scs-repomix.md
+
+# vibecode artefacts
+algo_pseudocode.txt
+prompt_plan.md
+specs.md
+todo.md

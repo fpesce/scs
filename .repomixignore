@@ -1,0 +1,15 @@
+repomix.config.json
+
+*_test.go
+
+*.txt
+
+# artefact
+*.scs
+scs
+
+# vibecode artefacts
+algo_pseudocode.txt
+prompt_plan.md
+specs.md
+todo.md
