@@ -63,6 +63,13 @@ func TestShatterGraph(t *testing.T) {
 			wantGroups:      1,
 			wantIslandSizes: []int{2},
 		},
+		{
+			name:            "multi-length overlap above threshold merges",
+			survivors:       []string{"abcdefgh", "defghxyz"},
+			minOverlap:      3,
+			wantGroups:      1,
+			wantIslandSizes: []int{2},
+		},
 	}
 
 	for _, tt := range tests {

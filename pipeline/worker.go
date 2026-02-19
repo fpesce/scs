@@ -1,14 +1,19 @@
 package pipeline
 
 import (
+	"fmt"
 	"runtime"
+	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 // AssembleConcurrently processes all islands using a worker pool pattern.
 // Small islands (len <= dpLimit) are solved with exact DP, large ones with greedy.
 // Workers are spun up equal to runtime.NumCPU().
-func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int) []string {
+// Jobs are sorted descending by island size to prevent tail stalling.
+// When verbose is true, real-time progress is printed via atomic counter.
+func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose bool) []string {
 	n := len(islands)
 	if n == 0 {
 		return nil
@@ -22,6 +27,7 @@ func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int) []string 
 	jobs := make(chan int, n)
 	results := make([]string, n)
 	var wg sync.WaitGroup
+	var completed int32
 
 	// Spin up workers.
 	for w := 0; w < numWorkers; w++ {
@@ -35,18 +41,36 @@ func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int) []string 
 				} else {
 					results[idx] = SolveGreedyHeap(island, minOverlap)
 				}
+				if verbose {
+					c := atomic.AddInt32(&completed, 1)
+					fmt.Printf("\r  Assembling... %d/%d islands (%d%%)",
+						c, n, int(c)*100/n)
+				}
 			}
 		}()
 	}
 
-	// Feed jobs.
+	// Sort jobs descending by island size to prevent tail stalling.
+	type jobDesc struct{ idx, size int }
+	jobList := make([]jobDesc, n)
 	for i := 0; i < n; i++ {
-		jobs <- i
+		jobList[i] = jobDesc{idx: i, size: len(islands[i])}
+	}
+	sort.Slice(jobList, func(i, j int) bool {
+		return jobList[i].size > jobList[j].size
+	})
+
+	for _, j := range jobList {
+		jobs <- j.idx
 	}
 	close(jobs)
 
 	// Wait for all workers to finish.
 	wg.Wait()
+
+	if verbose && n > 0 {
+		fmt.Println()
+	}
 
 	return results
 }

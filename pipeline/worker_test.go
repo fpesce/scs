@@ -49,7 +49,7 @@ func TestAssembleConcurrently(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := AssembleConcurrently(tt.islands, tt.dpLimit, tt.minOverlap)
+			result := AssembleConcurrently(tt.islands, tt.dpLimit, tt.minOverlap, false)
 
 			if tt.name == "empty input" {
 				if result != nil {
@@ -84,7 +84,7 @@ func TestAssembleConcurrently_Deterministic(t *testing.T) {
 
 	var prev []string
 	for run := 0; run < 5; run++ {
-		result := AssembleConcurrently(islands, 15, 2)
+		result := AssembleConcurrently(islands, 15, 2, false)
 		if prev != nil {
 			for i := range result {
 				if result[i] != prev[i] {

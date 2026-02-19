@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/joke/scs/cli"
 	scsio "github.com/joke/scs/io"
@@ -50,29 +51,29 @@ func run(args []string) error {
 	islands := pipeline.ShatterGraph(survivors, cfg.MinOverlap)
 	if cfg.Verbose {
 		fmt.Printf("Phase 2-3: shattered into %d isolated islands\n", len(islands))
-		for i := range islands {
-			fmt.Printf("\r  Shattering... %d/%d islands (%d%%)",
-				i+1, len(islands), (i+1)*100/len(islands))
-		}
-		if len(islands) > 0 {
-			fmt.Println()
-		}
 	}
 
 	// Phase 4: Solve islands concurrently via worker pool.
-	superWords := pipeline.AssembleConcurrently(islands, cfg.DPLimit, cfg.MinOverlap)
+	// Real-time progress is reported inside AssembleConcurrently when verbose.
+	superWords := pipeline.AssembleConcurrently(islands, cfg.DPLimit, cfg.MinOverlap, cfg.Verbose)
 	if cfg.Verbose {
 		fmt.Printf("Phase 4: assembled %d super-words\n", len(superWords))
 	}
 
-	// Phase 5: Sort by length descending, blind concatenation.
+	// Phase 5: Sort by length descending, single-alloc concatenation.
 	sort.Slice(superWords, func(i, j int) bool {
 		return len(superWords[i]) > len(superWords[j])
 	})
 
-	var masterString string
+	var builder strings.Builder
+	var totalLen int
+	for _, sw := range superWords {
+		totalLen += len(sw)
+	}
+	builder.Grow(totalLen)
+
 	for i, sw := range superWords {
-		masterString += sw
+		builder.WriteString(sw)
 		if cfg.Verbose {
 			fmt.Printf("\r  Concatenating... %d/%d (%d%%)",
 				i+1, len(superWords), (i+1)*100/len(superWords))
@@ -82,6 +83,7 @@ func run(args []string) error {
 		fmt.Println()
 	}
 
+	masterString := builder.String()
 	if err := scsio.WriteResult(cfg.OutputPath, masterString); err != nil {
 		return fmt.Errorf("writing output: %w", err)
 	}

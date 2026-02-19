@@ -26,20 +26,26 @@ func CompileLPS(pattern string) []int {
 }
 
 // CalculateMaxOverlap finds the maximum length where a proper suffix of left
-// exactly matches a proper prefix of right. Uses KMP logic on the concatenated
-// pattern right+"$"+left to avoid O(L^2) naive checks.
+// exactly matches a proper prefix of right using zero-allocation slice comparison.
 func CalculateMaxOverlap(left, right string) int {
 	if len(left) == 0 || len(right) == 0 {
 		return 0
 	}
 
-	// Build pattern = right + sentinel + left.
-	// The LPS of this combined string tells us the longest prefix of right
-	// that matches a suffix of left.
-	combined := right + "$" + left
-	lps := CompileLPS(combined)
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
 
-	// The last entry of the LPS array is the overlap length,
-	// bounded by min(len(left), len(right)).
-	return lps[len(combined)-1]
+	// Try from longest possible overlap down to 1.
+	// Fast boundary check: first and last chars must match before full slice comparison.
+	for k := limit; k > 0; k-- {
+		if left[len(left)-k] == right[0] && left[len(left)-1] == right[k-1] {
+			if left[len(left)-k:] == right[:k] {
+				return k
+			}
+		}
+	}
+
+	return 0
 }

@@ -2,14 +2,20 @@ package pipeline
 
 import (
 	"container/heap"
+	"strings"
 
 	"github.com/joke/scs/graph"
 )
 
-// SolveGreedyHeap solves a large island using a greedy algorithm backed by
-// a Max-Heap priority queue. At each step, it pops the pair with the largest
-// overlap, merges them, and re-evaluates overlaps with remaining active strings.
+// SolveGreedyHeap solves a large island using a Kruskal-style max-weight
+// path cover. Overlaps are computed once using PrefixMap acceleration,
+// then edges are popped from a max-heap. No physical string merging occurs
+// during assembly — only pointer chains are built.
 func SolveGreedyHeap(island []string, minOverlap int) string {
+	if minOverlap <= 0 {
+		minOverlap = 1
+	}
+
 	n := len(island)
 	if n == 0 {
 		return ""
@@ -18,100 +24,113 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 		return island[0]
 	}
 
-	// active[i] is true if string i has not been merged yet.
-	active := make([]bool, n)
-	for i := range active {
-		active[i] = true
+	// Build PrefixMap for O(1) candidate lookup.
+	prefixMap := make(map[string][]int)
+	var shortIndices []int
+	for i, s := range island {
+		if len(s) >= minOverlap {
+			p := s[:minOverlap]
+			prefixMap[p] = append(prefixMap[p], i)
+		} else {
+			shortIndices = append(shortIndices, i)
+		}
 	}
 
-	// strs holds the current string content for each index.
-	// When two strings merge, the new string is stored at a new index.
-	strs := make([]string, n)
-	copy(strs, island)
+	// Compute all overlaps once and collect into a slice for bulk heap init.
+	hSlice := make(graph.OverlapHeap, 0, n)
+	h := &hSlice
 
-	// Calculate initial O(N^2) pairwise overlaps and push to heap.
-	h := &graph.OverlapHeap{}
+	seen := make([]int, n)
+	for i := range seen {
+		seen[i] = -1
+	}
+
+	for i, s := range island {
+		if len(s) >= minOverlap {
+			// Try all suffix lengths from longest to shortest.
+			for L := len(s); L >= minOverlap; L-- {
+				p := s[len(s)-L : len(s)-L+minOverlap]
+				candidates, ok := prefixMap[p]
+				if !ok {
+					continue
+				}
+				suffix := s[len(s)-L:]
+
+				for _, j := range candidates {
+					if i == j || seen[j] == i {
+						continue
+					}
+					if len(island[j]) >= L && island[j][:L] == suffix {
+						seen[j] = i
+						*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: L})
+					}
+				}
+			}
+			// Handle short right-side strings.
+			for _, j := range shortIndices {
+				if i == j {
+					continue
+				}
+				ov := graph.CalculateMaxOverlap(s, island[j])
+				if ov > 0 {
+					*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: ov})
+				}
+			}
+		} else {
+			// Short string: brute-force against all.
+			for j := 0; j < n; j++ {
+				if i == j {
+					continue
+				}
+				ov := graph.CalculateMaxOverlap(s, island[j])
+				if ov > 0 {
+					*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: ov})
+				}
+			}
+		}
+	}
+
 	heap.Init(h)
 
+	// Kruskal-style path cover via pointer chains.
+	next := make([]int, n)
+	prev := make([]int, n)
+	nextOverlap := make([]int, n)
 	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			if i == j {
-				continue
-			}
-			ov := graph.CalculateMaxOverlap(strs[i], strs[j])
-			if ov > 0 {
-				h.PushNode(graph.OverlapNode{
-					LeftID:     i,
-					RightID:    j,
-					OverlapLen: ov,
-				})
-			}
-		}
+		next[i] = -1
+		prev[i] = -1
 	}
 
-	activeCount := n
+	dsu := graph.InstantiateDSU(n)
+	mergedCount := 0
 
-	for activeCount > 1 {
-		// If the heap is exhausted but we still have active strings,
-		// they are disjoint — just concatenate them.
-		if h.Len() == 0 {
-			break
-		}
-
+	for h.Len() > 0 && mergedCount < n-1 {
 		node := h.PopNode()
-
-		// Skip if either side has been merged already.
-		if !active[node.LeftID] || !active[node.RightID] {
-			continue
-		}
-
-		// Merge: left + right[overlap:]
-		merged := strs[node.LeftID] + strs[node.RightID][node.OverlapLen:]
-
-		// Deactivate the old entries.
-		active[node.LeftID] = false
-		active[node.RightID] = false
-
-		// Create a new index for the merged string.
-		newIdx := len(strs)
-		strs = append(strs, merged)
-		active = append(active, true)
-
-		// Calculate overlaps between new string and all remaining active strings.
-		for i := range active {
-			if !active[i] || i == newIdx {
-				continue
-			}
-			// new → i
-			ov := graph.CalculateMaxOverlap(strs[newIdx], strs[i])
-			if ov > 0 {
-				h.PushNode(graph.OverlapNode{
-					LeftID:     newIdx,
-					RightID:    i,
-					OverlapLen: ov,
-				})
-			}
-			// i → new
-			ov = graph.CalculateMaxOverlap(strs[i], strs[newIdx])
-			if ov > 0 {
-				h.PushNode(graph.OverlapNode{
-					LeftID:     i,
-					RightID:    newIdx,
-					OverlapLen: ov,
-				})
-			}
-		}
-
-		activeCount--
-	}
-
-	// Concatenate all remaining active strings.
-	var result string
-	for i := range active {
-		if active[i] {
-			result += strs[i]
+		u, v := node.LeftID, node.RightID
+		// Accept edge only if u has no outgoing, v has no incoming, and no cycle.
+		if next[u] == -1 && prev[v] == -1 && dsu.Find(u) != dsu.Find(v) {
+			next[u] = v
+			prev[v] = u
+			nextOverlap[u] = node.OverlapLen
+			dsu.Union(u, v)
+			mergedCount++
 		}
 	}
 
-	return result
+	// Reconstruct chains from path heads (nodes with no predecessor).
+	var result strings.Builder
+	for i := 0; i < n; i++ {
+		if prev[i] == -1 {
+			curr := i
+			result.WriteString(island[curr])
+			for next[curr] != -1 {
+				ov := nextOverlap[curr]
+				nxt := next[curr]
+				result.WriteString(island[nxt][ov:])
+				curr = nxt
+			}
+		}
+	}
+
+	return result.String()
 }
