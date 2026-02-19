@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/joke/scs/pipeline"
 )
 
 func TestEndToEnd(t *testing.T) {
@@ -96,6 +98,44 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
+// TestAllWordsAreIncluded is a pipeline-level E2E test with chained overlaps,
+// duplicates, and a compression assertion.
+func TestAllWordsAreIncluded(t *testing.T) {
+	inputWords := []string{
+		"password", "swordfish", "fishbone", "123456", "admin", "duplicate", "duplicate",
+	}
+
+	// Run pipeline pieces exactly as main.go does.
+	survivors := pipeline.ExactDeduplication(inputWords)
+	survivors = pipeline.EliminateSubstrings(survivors)
+	islands := pipeline.ShatterGraph(survivors, 3)
+	superWords := pipeline.AssembleConcurrently(islands, 15, 3, false)
+
+	finalSuperstring := strings.Join(superWords, "")
+
+	// Verify integrity: every original word must exist in the result.
+	for _, word := range inputWords {
+		if !strings.Contains(finalSuperstring, word) {
+			t.Errorf("final superstring is missing word: %q", word)
+		}
+	}
+
+	// Verify compression: naive concat of unique words is 53 chars.
+	// The pipeline must produce something shorter.
+	naiveLen := 0
+	seen := make(map[string]bool)
+	for _, w := range inputWords {
+		if !seen[w] {
+			naiveLen += len(w)
+			seen[w] = true
+		}
+	}
+	if len(finalSuperstring) >= naiveLen {
+		t.Errorf("pipeline did not compress! got len=%d, naive=%d, result=%q",
+			len(finalSuperstring), naiveLen, finalSuperstring)
+	}
+}
+
 // itoa is a minimal int-to-string converter to avoid importing strconv.
 func itoa(n int) string {
 	if n == 0 {
@@ -108,3 +148,4 @@ func itoa(n int) string {
 	}
 	return string(digits)
 }
+

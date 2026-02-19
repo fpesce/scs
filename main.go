@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"sort"
 	"strings"
 
@@ -22,6 +23,19 @@ func run(args []string) error {
 	cfg, err := cli.ParseFlags(args)
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
+	}
+
+	// Optional CPU profiling.
+	if cfg.Profile {
+		f, err := os.Create("cpu.prof")
+		if err != nil {
+			return fmt.Errorf("creating profile: %w", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("starting profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
 	}
 
 	lines, err := scsio.ReadLines(cfg.InputPath)

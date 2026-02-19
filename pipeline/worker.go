@@ -12,7 +12,8 @@ import (
 // Small islands (len <= dpLimit) are solved with exact DP, large ones with greedy.
 // Workers are spun up equal to runtime.NumCPU().
 // Jobs are sorted descending by island size to prevent tail stalling.
-// When verbose is true, real-time progress is printed via atomic counter.
+// When verbose is true, progress tracks strings assembled (not island count)
+// for smooth reporting even when large islands dominate processing time.
 func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose bool) []string {
 	n := len(islands)
 	if n == 0 {
@@ -24,10 +25,16 @@ func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose b
 		numWorkers = n
 	}
 
+	// Count total strings for smooth progress reporting.
+	totalStrings := 0
+	for _, island := range islands {
+		totalStrings += len(island)
+	}
+
 	jobs := make(chan int, n)
 	results := make([]string, n)
 	var wg sync.WaitGroup
-	var completed int32
+	var completedStrings int32
 
 	// Spin up workers.
 	for w := 0; w < numWorkers; w++ {
@@ -42,9 +49,9 @@ func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose b
 					results[idx] = SolveGreedyHeap(island, minOverlap)
 				}
 				if verbose {
-					c := atomic.AddInt32(&completed, 1)
-					fmt.Printf("\r  Assembling... %d/%d islands (%d%%)",
-						c, n, int(c)*100/n)
+					c := atomic.AddInt32(&completedStrings, int32(len(island)))
+					fmt.Printf("\r  Assembling... %d/%d strings (%d%%)",
+						c, totalStrings, int(c)*100/totalStrings)
 				}
 			}
 		}()

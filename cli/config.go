@@ -14,6 +14,7 @@ type Config struct {
 	MinOverlap int
 	DPLimit    int
 	Verbose    bool
+	Profile    bool
 }
 
 // ParseFlags parses and validates CLI flags from the given arguments.
@@ -31,6 +32,7 @@ func ParseFlags(args []string) (*Config, error) {
 	fs.IntVar(&cfg.DPLimit, "dp-limit", 15, "Exact DP threshold for assembly")
 	fs.BoolVar(&cfg.Verbose, "v", false, "Enable verbose progress updates")
 	fs.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose progress updates")
+	fs.BoolVar(&cfg.Profile, "profile", false, "Write CPU profile to cpu.prof")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)

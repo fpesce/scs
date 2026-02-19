@@ -1,16 +1,15 @@
 package pipeline
 
 import (
-	"container/heap"
 	"strings"
 
 	"github.com/joke/scs/graph"
 )
 
-// SolveGreedyHeap solves a large island using a Kruskal-style max-weight
-// path cover. Overlaps are computed once using PrefixMap acceleration,
-// then edges are popped from a max-heap. No physical string merging occurs
-// during assembly — only pointer chains are built.
+// SolveGreedyHeap solves a large island using a progressive top-down scan.
+// Instead of precomputing all overlaps into a heap, it iterates overlap length
+// L from maxLen down to 1. The first match found at any L is guaranteed to be
+// the longest possible overlap — no heap needed.
 func SolveGreedyHeap(island []string, minOverlap int) string {
 	if minOverlap <= 0 {
 		minOverlap = 1
@@ -24,75 +23,13 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 		return island[0]
 	}
 
-	// Build PrefixMap for O(1) candidate lookup.
-	prefixMap := make(map[string][]int)
-	var shortIndices []int
-	for i, s := range island {
-		if len(s) >= minOverlap {
-			p := s[:minOverlap]
-			prefixMap[p] = append(prefixMap[p], i)
-		} else {
-			shortIndices = append(shortIndices, i)
+	maxLen := 0
+	for _, s := range island {
+		if len(s) > maxLen {
+			maxLen = len(s)
 		}
 	}
 
-	// Compute all overlaps once and collect into a slice for bulk heap init.
-	hSlice := make(graph.OverlapHeap, 0, n)
-	h := &hSlice
-
-	seen := make([]int, n)
-	for i := range seen {
-		seen[i] = -1
-	}
-
-	for i, s := range island {
-		if len(s) >= minOverlap {
-			// Try all suffix lengths from longest to shortest.
-			for L := len(s); L >= minOverlap; L-- {
-				p := s[len(s)-L : len(s)-L+minOverlap]
-				candidates, ok := prefixMap[p]
-				if !ok {
-					continue
-				}
-				suffix := s[len(s)-L:]
-
-				for _, j := range candidates {
-					if i == j || seen[j] == i {
-						continue
-					}
-					if len(island[j]) >= L && island[j][:L] == suffix {
-						seen[j] = i
-						*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: L})
-					}
-				}
-			}
-			// Handle short right-side strings.
-			for _, j := range shortIndices {
-				if i == j {
-					continue
-				}
-				ov := graph.CalculateMaxOverlap(s, island[j])
-				if ov > 0 {
-					*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: ov})
-				}
-			}
-		} else {
-			// Short string: brute-force against all.
-			for j := 0; j < n; j++ {
-				if i == j {
-					continue
-				}
-				ov := graph.CalculateMaxOverlap(s, island[j])
-				if ov > 0 {
-					*h = append(*h, graph.OverlapNode{LeftID: i, RightID: j, OverlapLen: ov})
-				}
-			}
-		}
-	}
-
-	heap.Init(h)
-
-	// Kruskal-style path cover via pointer chains.
 	next := make([]int, n)
 	prev := make([]int, n)
 	nextOverlap := make([]int, n)
@@ -104,28 +41,80 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 	dsu := graph.InstantiateDSU(n)
 	mergedCount := 0
 
-	for h.Len() > 0 && mergedCount < n-1 {
-		node := h.PopNode()
-		u, v := node.LeftID, node.RightID
-		// Accept edge only if u has no outgoing, v has no incoming, and no cycle.
-		if next[u] == -1 && prev[v] == -1 && dsu.Find(u) != dsu.Find(v) {
-			next[u] = v
-			prev[v] = u
-			nextOverlap[u] = node.OverlapLen
-			dsu.Union(u, v)
-			mergedCount++
+	// Progressively match from longest possible overlap down to 1.
+	for L := maxLen; L >= 1; L-- {
+		// Build PrefixMap of length-L prefixes for available v nodes (prev[v]==-1).
+		prefixMap := make(map[string][]int)
+		for v := 0; v < n; v++ {
+			if prev[v] == -1 && len(island[v]) >= L {
+				p := island[v][:L]
+				prefixMap[p] = append(prefixMap[p], v)
+			}
+		}
+
+		if len(prefixMap) == 0 {
+			continue
+		}
+
+		// For each available u (next[u]==-1), check if its suffix matches.
+		for u := 0; u < n; u++ {
+			if next[u] != -1 || len(island[u]) < L {
+				continue
+			}
+			suffix := island[u][len(island[u])-L:]
+			candidates, ok := prefixMap[suffix]
+			if !ok {
+				continue
+			}
+			for _, v := range candidates {
+				if u == v || prev[v] != -1 || dsu.Find(u) == dsu.Find(v) {
+					continue
+				}
+				// Guard: overlaps below minOverlap only accepted if at least
+				// one string is shorter than minOverlap.
+				if L < minOverlap && len(island[u]) >= minOverlap && len(island[v]) >= minOverlap {
+					continue
+				}
+
+				next[u] = v
+				prev[v] = u
+				nextOverlap[u] = L
+				dsu.Union(u, v)
+				mergedCount++
+				break // First match at this L is the best for u.
+			}
+		}
+
+		if mergedCount >= n-1 {
+			break
 		}
 	}
 
-	// Reconstruct chains from path heads (nodes with no predecessor).
+	// Pre-calculate exact builder capacity for zero-realloc final assembly.
+	totalLen := 0
+	for i := 0; i < n; i++ {
+		if prev[i] == -1 {
+			curr := i
+			totalLen += len(island[curr])
+			for next[curr] != -1 {
+				nxt := next[curr]
+				totalLen += len(island[nxt]) - nextOverlap[curr]
+				curr = nxt
+			}
+		}
+	}
+
 	var result strings.Builder
+	result.Grow(totalLen)
+
+	// Reconstruct chains from path heads (nodes with no predecessor).
 	for i := 0; i < n; i++ {
 		if prev[i] == -1 {
 			curr := i
 			result.WriteString(island[curr])
 			for next[curr] != -1 {
-				ov := nextOverlap[curr]
 				nxt := next[curr]
+				ov := nextOverlap[curr]
 				result.WriteString(island[nxt][ov:])
 				curr = nxt
 			}
