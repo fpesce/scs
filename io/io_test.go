@@ -19,14 +19,14 @@ func TestReadLines(t *testing.T) {
 			wantLines: []string{"hello", "world", "foo"},
 		},
 		{
-			name:      "empty lines stripped",
-			content:   "hello\n\n\nworld\n  \nfoo\n",
-			wantLines: []string{"hello", "world", "foo"},
+			name:      "empty lines preserved",
+			content:   "hello\n\n\nworld\n",
+			wantLines: []string{"hello", "", "", "world"},
 		},
 		{
-			name:      "whitespace trimmed",
+			name:      "whitespace preserved",
 			content:   "  hello  \n  world  \n",
-			wantLines: []string{"hello", "world"},
+			wantLines: []string{"  hello  ", "  world  "},
 		},
 		{
 			name:      "completely empty file",
@@ -34,14 +34,24 @@ func TestReadLines(t *testing.T) {
 			wantLines: nil,
 		},
 		{
-			name:      "only whitespace and newlines",
-			content:   "\n  \n\t\n",
-			wantLines: nil,
+			name:      "only newlines",
+			content:   "\n\n\n",
+			wantLines: []string{"", "", ""},
+		},
+		{
+			name:      "tabs preserved",
+			content:   "\thello\t\n\tworld\t\n",
+			wantLines: []string{"\thello\t", "\tworld\t"},
 		},
 		{
 			name:      "single line no trailing newline",
 			content:   "only",
 			wantLines: []string{"only"},
+		},
+		{
+			name:      "whitespace-only lines preserved",
+			content:   "  \n\t\n",
+			wantLines: []string{"  ", "\t"},
 		},
 	}
 

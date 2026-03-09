@@ -1,6 +1,10 @@
 package pipeline
 
-import "github.com/joke/scs/graph"
+import (
+	"sort"
+
+	"github.com/joke/scs/graph"
+)
 
 // ShatterGraph partitions the survivors into weakly connected components (islands)
 // based on suffix-prefix overlaps of at least minOverlap characters.
@@ -89,8 +93,16 @@ func ShatterGraph(survivors []string, minOverlap int) [][]string {
 		groups[root] = append(groups[root], i)
 	}
 
+	// Extract and sort keys for deterministic iteration.
+	roots := make([]int, 0, len(groups))
+	for root := range groups {
+		roots = append(roots, root)
+	}
+	sort.Ints(roots)
+
 	islands := make([][]string, 0, len(groups))
-	for _, indices := range groups {
+	for _, root := range roots {
+		indices := groups[root]
 		island := make([]string, len(indices))
 		for k, idx := range indices {
 			island[k] = survivors[idx]

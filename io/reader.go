@@ -5,11 +5,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strings"
 )
 
-// ReadLines reads a file and returns all non-empty lines.
-// Lines consisting solely of whitespace are dropped.
+// ReadLines reads a file and returns every line with exact byte fidelity.
+// Whitespace, tabs, and empty lines are all preserved.
+// Only the trailing newline delimiter is stripped.
 func ReadLines(filepath string) ([]string, error) {
 	f, err := os.Open(filepath)
 	if err != nil {
@@ -21,10 +21,7 @@ func ReadLines(filepath string) ([]string, error) {
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			lines = append(lines, line)
-		}
+		lines = append(lines, scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
