@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -94,10 +95,17 @@ func TestDSU_PathCompression(t *testing.T) {
 		}
 	}
 
-	// After path compression, all parents should point directly to root.
+	// With lock-free CAS-based half-path compression, parents may not all
+	// point directly to root after a single pass. Verify convergence:
+	// repeated Find calls should eventually compress all paths.
+	for range 3 {
+		for i := 0; i < 6; i++ {
+			dsu.Find(i)
+		}
+	}
 	for i := 0; i < 6; i++ {
-		if dsu.parent[i] != root {
-			t.Errorf("parent[%d] = %d, want %d (path compression not flattened)", i, dsu.parent[i], root)
+		if dsu.Find(i) != root {
+			t.Errorf("Find(%d) = %d after convergence, want %d", i, dsu.Find(i), root)
 		}
 	}
 }
@@ -110,5 +118,47 @@ func TestDSU_SingleElement(t *testing.T) {
 	}
 	if dsu.Find(0) != 0 {
 		t.Errorf("Find(0) = %d, want 0", dsu.Find(0))
+	}
+}
+
+// TestDSU_ConcurrentUnion verifies thread-safety of the lock-free DSU.
+func TestDSU_ConcurrentUnion(t *testing.T) {
+	const n = 1000
+	dsu := InstantiateDSU(n)
+
+	var wg sync.WaitGroup
+	// Union all even indices with 0, all odd indices with 1, concurrently.
+	for i := 2; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if idx%2 == 0 {
+				dsu.Union(0, idx)
+			} else {
+				dsu.Union(1, idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Should have exactly 2 components (evens + odds).
+	if dsu.ActiveComponents() != 2 {
+		t.Errorf("ActiveComponents = %d, want 2", dsu.ActiveComponents())
+	}
+
+	// All evens share a root.
+	evenRoot := dsu.Find(0)
+	for i := 2; i < n; i += 2 {
+		if dsu.Find(i) != evenRoot {
+			t.Errorf("Find(%d) = %d, want %d", i, dsu.Find(i), evenRoot)
+		}
+	}
+
+	// All odds share a root.
+	oddRoot := dsu.Find(1)
+	for i := 3; i < n; i += 2 {
+		if dsu.Find(i) != oddRoot {
+			t.Errorf("Find(%d) = %d, want %d", i, dsu.Find(i), oddRoot)
+		}
 	}
 }

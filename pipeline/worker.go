@@ -8,12 +8,67 @@ import (
 	"sync/atomic"
 )
 
+// SolveHierarchicalGreedy partitions a massive dataset into chunks using a
+// fast lexicographic sort (which naturally groups strings with shared prefixes),
+// solves them in parallel via an inner worker pool, and recursively reduces.
+//
+// This replaces the O(N²) BFS chunking loop that pegged a single core.
+func SolveHierarchicalGreedy(island []string, minOverlap, chunkSize int) string {
+	if len(island) <= chunkSize {
+		return SolveGreedyHeap(island, minOverlap)
+	}
+
+	n := len(island)
+
+	// 1. FAST GROUPING: Sort alphabetically to natively group strings with shared prefixes.
+	sortedIsland := make([]string, n)
+	copy(sortedIsland, island)
+	sort.Strings(sortedIsland)
+
+	// 2. Slice the sorted array into manageable chunks instantly.
+	var chunks [][]string
+	for i := 0; i < n; i += chunkSize {
+		end := i + chunkSize
+		if end > n {
+			end = n
+		}
+		chunks = append(chunks, sortedIsland[i:end])
+	}
+
+	results := make([]string, len(chunks))
+	var wg sync.WaitGroup
+
+	// 3. Process chunks using an INNER worker pool for full CPU saturation.
+	numWorkers := runtime.NumCPU()
+	if numWorkers <= 0 {
+		numWorkers = 1
+	}
+
+	jobChan := make(chan int, len(chunks))
+	for i := range chunks {
+		jobChan <- i
+	}
+	close(jobChan)
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobChan {
+				results[idx] = SolveGreedyHeap(chunks[idx], minOverlap)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// 4. Reduce Phase: Recursively combine the resulting mini-superstrings.
+	return SolveHierarchicalGreedy(results, minOverlap, chunkSize)
+}
+
 // AssembleConcurrently processes all islands using a worker pool pattern.
-// Small islands (len <= dpLimit) are solved with exact DP, large ones with greedy.
-// Workers are spun up equal to runtime.NumCPU().
+// Small islands (len <= dpLimit) are solved with exact DP, large ones with
+// hierarchical sort+slice chunking for full CPU saturation.
 // Jobs are sorted descending by island size to prevent tail stalling.
-// When verbose is true, progress tracks strings assembled (not island count)
-// for smooth reporting even when large islands dominate processing time.
 func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose bool) []string {
 	n := len(islands)
 	if n == 0 {
@@ -46,7 +101,8 @@ func AssembleConcurrently(islands [][]string, dpLimit, minOverlap int, verbose b
 				if len(island) <= dpLimit {
 					results[idx] = SolveExactDP(island, minOverlap)
 				} else {
-					results[idx] = SolveGreedyHeap(island, minOverlap)
+					// Route giant islands into hierarchical sort+slice chunker.
+					results[idx] = SolveHierarchicalGreedy(island, minOverlap, 2000)
 				}
 				if verbose {
 					c := atomic.AddInt32(&completedStrings, int32(len(island)))

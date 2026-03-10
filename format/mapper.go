@@ -4,11 +4,13 @@ import (
 	"index/suffixarray"
 	"runtime"
 	"sync"
+	"unsafe"
 )
 
 // MapOffsets performs a single suffix array lookup over the masterString
 // to locate one valid starting byte offset for every unique source string.
 // Uses concurrent workers for O(N log M) matching with flat ~4x memory footprint.
+// Zero-copy unsafe cast avoids heap allocation per string→[]byte conversion.
 func MapOffsets(masterString string, uniqueSourceStrings []string) map[string]int {
 	if len(uniqueSourceStrings) == 0 {
 		return make(map[string]int)
@@ -45,8 +47,9 @@ func MapOffsets(masterString string, uniqueSourceStrings []string) map[string]in
 					localMap[s] = 0
 					continue
 				}
-				// Fetch ANY 1 match (the SCS decoder relies on a valid slice offset).
-				matches := sa.Lookup([]byte(s), 1)
+				// Zero-copy cast: string → []byte without allocation.
+				b := unsafe.Slice(unsafe.StringData(s), len(s))
+				matches := sa.Lookup(b, 1)
 				if len(matches) > 0 {
 					localMap[s] = matches[0]
 				}

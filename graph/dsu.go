@@ -1,61 +1,64 @@
 package graph
 
-// DSU implements a flat-array Disjoint Set Union with path compression
-// and union-by-size for near-O(1) amortized operations.
+import "sync/atomic"
+
+// DSU implements a lock-free Disjoint Set Union using atomic Compare-And-Swap
+// operations for thread-safe concurrent Find and Union without mutexes.
 type DSU struct {
-	parent []int
-	size   []int
-	count  int
+	parent []int32
+	count  int32
 }
 
 // InstantiateDSU creates a DSU where each element is its own isolated component.
 func InstantiateDSU(capacity int) *DSU {
 	dsu := &DSU{
-		parent: make([]int, capacity),
-		size:   make([]int, capacity),
-		count:  capacity,
+		parent: make([]int32, capacity),
+		count:  int32(capacity),
 	}
-	for i := 0; i < capacity; i++ {
+	for i := int32(0); i < int32(capacity); i++ {
 		dsu.parent[i] = i
-		dsu.size[i] = 1
 	}
 	return dsu
 }
 
 // Find returns the root representative of the component containing index.
-// Path compression is applied to flatten the tree on each query.
+// Uses lock-free path splitting (half-path compression) via atomic CAS.
 func (dsu *DSU) Find(index int) int {
-	if dsu.parent[index] == index {
-		return index
+	curr := int32(index)
+	for {
+		p := atomic.LoadInt32(&dsu.parent[curr])
+		if p == curr {
+			return int(curr)
+		}
+		// Path compression via atomic CAS — point curr to grandparent.
+		pp := atomic.LoadInt32(&dsu.parent[p])
+		atomic.CompareAndSwapInt32(&dsu.parent[curr], p, pp)
+		curr = p
 	}
-	dsu.parent[index] = dsu.Find(dsu.parent[index])
-	return dsu.parent[index]
 }
 
 // Union merges the components containing u and v.
 // Returns true if a merge occurred, false if they were already connected.
-// Uses union-by-size to maintain balanced trees.
+// Uses union-by-index (smaller root wins) to maintain deterministic structure.
 func (dsu *DSU) Union(u, v int) bool {
-	rootU := dsu.Find(u)
-	rootV := dsu.Find(v)
-
-	if rootU == rootV {
-		return false
+	for {
+		rootU := int32(dsu.Find(u))
+		rootV := int32(dsu.Find(v))
+		if rootU == rootV {
+			return false
+		}
+		// Union by index rank to avoid cycles.
+		if rootU > rootV {
+			rootU, rootV = rootV, rootU
+		}
+		if atomic.CompareAndSwapInt32(&dsu.parent[rootV], rootV, rootU) {
+			atomic.AddInt32(&dsu.count, -1)
+			return true
+		}
 	}
-
-	if dsu.size[rootU] < dsu.size[rootV] {
-		dsu.parent[rootU] = rootV
-		dsu.size[rootV] += dsu.size[rootU]
-	} else {
-		dsu.parent[rootV] = rootU
-		dsu.size[rootU] += dsu.size[rootV]
-	}
-
-	dsu.count--
-	return true
 }
 
 // ActiveComponents returns the current number of disjoint components.
 func (dsu *DSU) ActiveComponents() int {
-	return dsu.count
+	return int(atomic.LoadInt32(&dsu.count))
 }

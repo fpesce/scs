@@ -5,6 +5,7 @@ import (
 	"index/suffixarray"
 	"runtime"
 	"sync"
+	"unsafe"
 )
 
 // EliminateSubstrings removes any string that is entirely contained within
@@ -15,15 +16,16 @@ import (
 // guaranteeing that individual words never contain \n. This prevents cross-word
 // matching in the suffix array. This is unrelated to the --sep flag, which
 // controls .scs output format.
+//
+// Internal dedup prevents duplicate strings from causing false SA elimination.
 func EliminateSubstrings(uniqueStrings []string) []string {
 	n := len(uniqueStrings)
 	if n <= 1 {
 		return uniqueStrings
 	}
 
-	// 0. Deduplicate first — identical strings appear >1 times in the buffer,
-	//    which would cause false elimination. This mirrors the pipeline's
-	//    ExactDeduplication step but makes this function self-contained.
+	// Lightweight dedup — prevents identical strings from appearing >1 times
+	// in the SA buffer which would cause false elimination.
 	seen := make(map[string]bool, n)
 	deduped := make([]string, 0, n)
 	for _, s := range uniqueStrings {
@@ -80,10 +82,10 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 					swallowed[i] = true
 					continue
 				}
+				// Zero-copy cast: string → []byte without allocation.
+				b := unsafe.Slice(unsafe.StringData(s), len(s))
 				// Look for up to 2 occurrences. If > 1, it exists inside another word.
-				// After dedup, each word appears exactly once as its own entry,
-				// so >1 means it's embedded inside a different, longer word.
-				if len(sa.Lookup([]byte(s), 2)) > 1 {
+				if len(sa.Lookup(b, 2)) > 1 {
 					swallowed[i] = true
 				}
 			}

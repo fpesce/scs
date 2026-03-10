@@ -206,7 +206,7 @@ func runMerge(cfg *cli.MergeConfig) error {
 	survivors, eliminatedMap := pipeline.MergeEliminateSubstrings(superstring1, updateWordStrings)
 
 	// Step 2: Generate mini-superstring from survivors and calculate overlap.
-	fragment, _ := pipeline.TruncateAndAppend(superstring1, survivors, 3, 15)
+	miniSuper, fragment, overlapLength := pipeline.TruncateAndAppend(superstring1, survivors, 3, 15)
 
 	// Step 3: Build the combined superstring.
 	combinedPayload := superstring1 + fragment
@@ -224,8 +224,10 @@ func runMerge(cfg *cli.MergeConfig) error {
 		})
 	}
 
-	// Map surviving words' offsets in the new combined payload.
-	if len(survivors) > 0 && fragment != "" {
+	// OPTIMIZATION: Map against the tiny miniSuper instead of the full combined payload.
+	// This avoids building a massive suffix array for 1GB+ payloads just to find
+	// offsets of a small handful of surviving words.
+	if len(survivors) > 0 && miniSuper != "" {
 		uniqueSurvivors := pipeline.ExactDeduplication(survivors)
 		var nonEmpty []string
 		for _, s := range uniqueSurvivors {
@@ -234,13 +236,16 @@ func runMerge(cfg *cli.MergeConfig) error {
 			}
 		}
 
-		survivorOffsets := format.MapOffsets(combinedPayload, nonEmpty)
+		// Map offsets within the small miniSuper, then shift forward.
+		survivorOffsets := format.MapOffsets(miniSuper, nonEmpty)
 
+		// Mathematically shift offsets to absolute position in combined payload.
+		shift := len(superstring1) - overlapLength
 		for _, surv := range survivors {
 			if offset, ok := survivorOffsets[surv]; ok {
 				allWords = append(allWords, format.Word{
 					String: surv,
-					Offset: offset,
+					Offset: offset + shift,
 					Length: len(surv),
 				})
 			}

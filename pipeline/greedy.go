@@ -10,6 +10,13 @@ import (
 // Instead of precomputing all overlaps into a heap, it iterates overlap length
 // L from maxLen down to 1. The first match found at any L is guaranteed to be
 // the longest possible overlap — no heap needed.
+//
+// Uses a zero-allocation inline linked list (head + listNext) instead of
+// dynamically allocated map[string][]int slices to eliminate GC thrashing.
+//
+// maxLen is capped at 1000 to prevent O(maxLen * N) string hashing blowup
+// during hierarchical recursive merging where superstrings grow to hundreds
+// of thousands of characters.
 func SolveGreedyHeap(island []string, minOverlap int) string {
 	if minOverlap <= 0 {
 		minOverlap = 1
@@ -30,6 +37,13 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 		}
 	}
 
+	// Cap maxLen to prevent O(maxLen * N) string hashing blowup on massive
+	// superstrings generated during hierarchical merging recursion.
+	const maxSearchLimit = 1000
+	if maxLen > maxSearchLimit {
+		maxLen = maxSearchLimit
+	}
+
 	next := make([]int, n)
 	prev := make([]int, n)
 	nextOverlap := make([]int, n)
@@ -41,18 +55,26 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 	dsu := graph.InstantiateDSU(n)
 	mergedCount := 0
 
+	// Allocate strictly ONCE outside the loop — reuse via clear().
+	head := make(map[string]int)
+	listNext := make([]int, n)
+
 	// Progressively match from longest possible overlap down to 1.
 	for L := maxLen; L >= 1; L-- {
-		// Build PrefixMap of length-L prefixes for available v nodes (prev[v]==-1).
-		prefixMap := make(map[string][]int)
-		for v := 0; v < n; v++ {
+		clear(head)
+
+		// Build inline linked list of length-L prefixes for available v nodes.
+		// Iterate backward so prepended list retains chronological order.
+		for v := n - 1; v >= 0; v-- {
 			if prev[v] == -1 && len(island[v]) >= L {
 				p := island[v][:L]
-				prefixMap[p] = append(prefixMap[p], v)
+				// Build linked list using 1-indexed values (0 = nil).
+				listNext[v] = head[p]
+				head[p] = v + 1
 			}
 		}
 
-		if len(prefixMap) == 0 {
+		if len(head) == 0 {
 			continue
 		}
 
@@ -62,11 +84,13 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 				continue
 			}
 			suffix := island[u][len(island[u])-L:]
-			candidates, ok := prefixMap[suffix]
-			if !ok {
-				continue
-			}
-			for _, v := range candidates {
+
+			// Traverse the zero-allocation inline linked list.
+			curr := head[suffix]
+			for curr != 0 {
+				v := curr - 1
+				curr = listNext[v] // advance
+
 				if u == v || prev[v] != -1 || dsu.Find(u) == dsu.Find(v) {
 					continue
 				}
@@ -81,7 +105,7 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 				nextOverlap[u] = L
 				dsu.Union(u, v)
 				mergedCount++
-				break // First match at this L is the best for u.
+				break
 			}
 		}
 

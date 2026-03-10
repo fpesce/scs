@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"unsafe"
 
 	"github.com/joke/scs/graph"
 )
@@ -54,7 +55,9 @@ func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (surv
 					localElim[word] = 0
 					continue
 				}
-				matches := sa.Lookup([]byte(word), 1)
+				// Zero-copy cast: string → []byte without allocation.
+				b := unsafe.Slice(unsafe.StringData(word), len(word))
+				matches := sa.Lookup(b, 1)
 				if len(matches) > 0 {
 					localElim[word] = matches[0]
 				} else {
@@ -86,9 +89,11 @@ func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (surv
 // TruncateAndAppend generates a compressed mini-superstring from surviving words,
 // then calculates the maximum suffix-prefix overlap with the primary payload
 // to truncate redundant boundary characters.
-func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dpLimit int) (fragment string, overlapLength int) {
+// Returns the full miniSuper (for localized offset mapping), the truncated fragment,
+// and the overlap length.
+func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dpLimit int) (miniSuper string, fragment string, overlapLength int) {
 	if len(survivors) == 0 {
-		return "", 0
+		return "", "", 0
 	}
 
 	// Deduplicate survivors.
@@ -98,7 +103,7 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 	unique = EliminateSubstrings(unique)
 
 	if len(unique) == 0 {
-		return "", 0
+		return "", "", 0
 	}
 
 	// Generate mini-superstring.
@@ -113,13 +118,13 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 		return len(superWords[i]) > len(superWords[j])
 	})
 
-	miniSuper := ""
+	miniSuper = ""
 	for _, sw := range superWords {
 		miniSuper += sw
 	}
 
 	if miniSuper == "" {
-		return "", 0
+		return "", "", 0
 	}
 
 	// Calculate suffix-prefix overlap between primary payload and miniSuper.
@@ -128,5 +133,5 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 	// Truncate the overlap from the front of miniSuper.
 	fragment = miniSuper[overlapLength:]
 
-	return fragment, overlapLength
+	return miniSuper, fragment, overlapLength
 }
