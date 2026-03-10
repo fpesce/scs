@@ -1,66 +1,59 @@
 package format
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestHeaderRoundTrip(t *testing.T) {
 	tests := []struct {
-		name string
-		h    Header
+		name      string
+		header    *Header
 	}{
 		{
 			name: "ordered with newline separator",
-			h: Header{
-				Version:      0x01,
+			header: &Header{
+				Version:      0x02,
 				Separator:    '\n',
 				IsOrdered:    true,
-				FooterOffset: 1234,
+				FooterOffset: 12345,
 			},
 		},
 		{
-			name: "unordered with comma separator",
-			h: Header{
-				Version:      0x01,
-				Separator:    ',',
+			name: "unordered with tab separator",
+			header: &Header{
+				Version:      0x02,
+				Separator:    '\t',
 				IsOrdered:    false,
-				FooterOffset: 99999,
+				FooterOffset: 67890,
 			},
 		},
 		{
-			name: "zero offset",
-			h: Header{
-				Version:      0x01,
+			name: "zero offset ordered",
+			header: &Header{
+				Version:      0x02,
 				Separator:    '\n',
 				IsOrdered:    true,
-				FooterOffset: 0,
+				FooterOffset: 12, // Minimum: header size.
 			},
 		},
 		{
-			name: "max 55-bit offset",
-			h: Header{
-				Version:      0x01,
-				Separator:    0,
-				IsOrdered:    false,
-				FooterOffset: (1 << 55) - 1,
-			},
-		},
-		{
-			name: "null separator",
-			h: Header{
-				Version:      0x01,
+			name: "large offset",
+			header: &Header{
+				Version:      0x02,
 				Separator:    0x00,
 				IsOrdered:    true,
-				FooterOffset: 42,
+				FooterOffset: (1 << 55) - 1, // Max 55-bit value.
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			encoded := EncodeHeader(&tt.h)
+			encoded := EncodeHeader(tt.header)
 
-			// Verify exactly 16 Base64 characters.
-			if len(encoded) != 16 {
-				t.Fatalf("encoded length = %d, want 16", len(encoded))
+			// Must be exactly 12 bytes.
+			if len(encoded) != 12 {
+				t.Fatalf("encoded length = %d, want 12", len(encoded))
 			}
 
 			decoded, err := DecodeHeader(encoded)
@@ -68,37 +61,41 @@ func TestHeaderRoundTrip(t *testing.T) {
 				t.Fatalf("decode error: %v", err)
 			}
 
-			if decoded.Version != tt.h.Version {
-				t.Errorf("Version = 0x%02X, want 0x%02X", decoded.Version, tt.h.Version)
+			if decoded.Version != tt.header.Version {
+				t.Errorf("version = 0x%02X, want 0x%02X", decoded.Version, tt.header.Version)
 			}
-			if decoded.Separator != tt.h.Separator {
-				t.Errorf("Separator = 0x%02X, want 0x%02X", decoded.Separator, tt.h.Separator)
+			if decoded.Separator != tt.header.Separator {
+				t.Errorf("separator = %d, want %d", decoded.Separator, tt.header.Separator)
 			}
-			if decoded.IsOrdered != tt.h.IsOrdered {
-				t.Errorf("IsOrdered = %v, want %v", decoded.IsOrdered, tt.h.IsOrdered)
+			if decoded.IsOrdered != tt.header.IsOrdered {
+				t.Errorf("isOrdered = %v, want %v", decoded.IsOrdered, tt.header.IsOrdered)
 			}
-			if decoded.FooterOffset != tt.h.FooterOffset {
-				t.Errorf("FooterOffset = %d, want %d", decoded.FooterOffset, tt.h.FooterOffset)
+			if decoded.FooterOffset != tt.header.FooterOffset {
+				t.Errorf("footerOffset = %d, want %d", decoded.FooterOffset, tt.header.FooterOffset)
 			}
 		})
 	}
 }
 
 func TestDecodeHeader_InvalidMagic(t *testing.T) {
-	// Manually create an invalid header.
-	encoded := EncodeHeader(&Header{Version: 0x01, Separator: '\n', IsOrdered: true, FooterOffset: 0})
-	// Corrupt the first character by modifying the encoded string.
-	// We'll test with an entirely wrong Base64 string.
-	_, err := DecodeHeader("AAAAAAAAAAAAAAAA") // 16 chars but wrong magic.
+	bad := []byte("XXX\x02\n\x00\x00\x00\x00\x00\x00\x00")
+	_, err := DecodeHeader(bad)
 	if err == nil {
-		t.Fatal("expected error for invalid magic, got nil")
+		t.Error("expected error for invalid magic string")
 	}
-	_ = encoded
 }
 
-func TestDecodeHeader_InvalidLength(t *testing.T) {
-	_, err := DecodeHeader("short")
+func TestDecodeHeader_InvalidVersion(t *testing.T) {
+	bad := []byte("SCS\x01\n\x00\x00\x00\x00\x00\x00\x00")
+	_, err := DecodeHeader(bad)
 	if err == nil {
-		t.Fatal("expected error for short input, got nil")
+		t.Error("expected error for version 0x01 (we require 0x02)")
+	}
+}
+
+func TestDecodeHeader_TooShort(t *testing.T) {
+	_, err := DecodeHeader([]byte("SCS"))
+	if err == nil {
+		t.Error("expected error for short input")
 	}
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,43 +83,45 @@ func TestEndToEnd(t *testing.T) {
 				t.Fatalf("reading output: %v", err)
 			}
 
-			// Verify 3-line format.
-			fileLines := strings.SplitAfter(string(got), "\n")
-			// SplitAfter keeps the delimiter; we expect exactly 3 lines + possibly empty trailing.
-			nonEmpty := 0
-			for _, l := range fileLines {
-				if l != "" {
-					nonEmpty++
-				}
-			}
-			if nonEmpty != 3 {
-				t.Fatalf("expected 3 lines, got %d (raw: %q)", nonEmpty, string(got))
+			// Verify binary format: first 12 bytes are the header.
+			if len(got) < 12 {
+				t.Fatalf("output too short: %d bytes", len(got))
 			}
 
-			// Line 1: should be exactly 16 Base64 chars + \n.
-			line1 := strings.TrimSuffix(fileLines[0], "\n")
-			if len(line1) != 16 {
-				t.Errorf("Line 1 length = %d, want 16", len(line1))
+			// Check magic string "SCS".
+			if string(got[0:3]) != "SCS" {
+				t.Errorf("magic = %q, want 'SCS'", string(got[0:3]))
 			}
 
-			// Line 2: the superstring.
-			line2 := strings.TrimSuffix(fileLines[1], "\n")
+			// Check version 0x02.
+			if got[3] != 0x02 {
+				t.Errorf("version = 0x%02X, want 0x02", got[3])
+			}
+
+			// Extract superstring via footer offset.
+			// Bytes 5-11 contain the 56-bit LE footer offset field.
+			var leBytes [8]byte
+			copy(leBytes[0:7], got[5:12])
+			val := uint64(leBytes[0]) | uint64(leBytes[1])<<8 | uint64(leBytes[2])<<16 |
+				uint64(leBytes[3])<<24 | uint64(leBytes[4])<<32 | uint64(leBytes[5])<<40 |
+				uint64(leBytes[6])<<48
+			footerOffset := val & ((1 << 55) - 1)
+
+			if footerOffset > uint64(len(got)) || footerOffset < 12 {
+				t.Fatalf("footer offset %d out of bounds (file size %d)", footerOffset, len(got))
+			}
+
+			superstring := string(got[12:footerOffset])
 			for _, s := range tt.wantContains {
-				if !strings.Contains(line2, s) {
-					t.Errorf("Line 2 (superstring) %q does not contain %q", line2, s)
+				if !strings.Contains(superstring, s) {
+					t.Errorf("superstring %q does not contain %q", superstring, s)
 				}
-			}
-
-			// Line 3: should be valid Base64.
-			line3 := strings.TrimSuffix(fileLines[2], "\n")
-			if _, err := base64.StdEncoding.DecodeString(line3); err != nil {
-				t.Errorf("Line 3 is not valid Base64: %v", err)
 			}
 		})
 	}
 }
 
-// TestBuildUnorderedMode tests that --unordered produces a valid 3-line format.
+// TestBuildUnorderedMode tests that --unordered produces a valid binary format.
 func TestBuildUnorderedMode(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(dir, "input.txt")
@@ -141,19 +142,15 @@ func TestBuildUnorderedMode(t *testing.T) {
 		t.Fatalf("reading output: %v", err)
 	}
 
-	parts := strings.Split(strings.TrimSuffix(string(got), "\n"), "\n")
-	if len(parts) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(parts))
+	// Verify binary header.
+	if len(got) < 12 {
+		t.Fatalf("output too short: %d bytes", len(got))
 	}
-
-	// Verify Line 1 is valid Base64 of length 16.
-	if len(parts[0]) != 16 {
-		t.Errorf("Line 1 length = %d, want 16", len(parts[0]))
+	if string(got[0:3]) != "SCS" {
+		t.Errorf("magic = %q, want 'SCS'", string(got[0:3]))
 	}
-
-	// Verify Line 3 is valid Base64.
-	if _, err := base64.StdEncoding.DecodeString(parts[2]); err != nil {
-		t.Errorf("Line 3 is not valid Base64: %v", err)
+	if got[3] != 0x02 {
+		t.Errorf("version = 0x%02X, want 0x02", got[3])
 	}
 }
 
@@ -225,8 +222,7 @@ func TestStrictFidelityRoundTrip(t *testing.T) {
 		t.Fatalf("build failed: %v", err)
 	}
 
-	// Build the scs binary if needed for exec, or use run directly.
-	// We'll build a temp binary.
+	// Build a temp binary.
 	binPath := filepath.Join(dir, "scs")
 	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
 	buildCmd.Dir = "."
@@ -253,19 +249,15 @@ func TestSearchExitCodes(t *testing.T) {
 	inputPath := filepath.Join(dir, "source.txt")
 	scsPath := filepath.Join(dir, "test.scs")
 
-	// Source contains "password", "swordfish", "fishbone".
-	// "sword" is an incidental substring (not a dataset member).
 	source := "password\nswordfish\nfishbone\n"
 	if err := os.WriteFile(inputPath, []byte(source), 0o644); err != nil {
 		t.Fatalf("writing input: %v", err)
 	}
 
-	// Build the .scs file.
 	if err := run([]string{"build", "-i", inputPath, "-o", scsPath}); err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
 
-	// Build a temp binary.
 	binPath := filepath.Join(dir, "scs")
 	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
 	buildCmd.Dir = "."
@@ -273,7 +265,7 @@ func TestSearchExitCodes(t *testing.T) {
 		t.Fatalf("building scs binary: %v\n%s", err, out)
 	}
 
-	// Test 1: True positive - "password" should return exit 0.
+	// Test 1: True positive.
 	cmd := exec.Command(binPath, "search", "password", scsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -283,7 +275,7 @@ func TestSearchExitCodes(t *testing.T) {
 		t.Errorf("expected 'Match found', got %q", string(out))
 	}
 
-	// Test 2: Non-existent word - "zzzzz" should return exit 1.
+	// Test 2: Non-existent word.
 	cmd2 := exec.Command(binPath, "search", "zzzzz", scsPath)
 	out2, err2 := cmd2.CombinedOutput()
 	if err2 == nil {
@@ -293,8 +285,7 @@ func TestSearchExitCodes(t *testing.T) {
 		t.Errorf("expected 'Not found', got %q", string(out2))
 	}
 
-	// Test 3: False positive - "sword" is a substring of "swordfish"
-	// but is NOT a dataset member. Should return exit 1.
+	// Test 3: False positive.
 	cmd3 := exec.Command(binPath, "search", "sword", scsPath)
 	out3, err3 := cmd3.CombinedOutput()
 	if err3 == nil {

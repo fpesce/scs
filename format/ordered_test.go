@@ -1,7 +1,7 @@
 package format
 
 import (
-	"encoding/base64"
+	"bytes"
 	"testing"
 )
 
@@ -14,13 +14,7 @@ func TestEncodeOrdered_Simple(t *testing.T) {
 	}
 	supLen := 13 // "helloworld" + "foo"
 
-	result := EncodeOrdered(lines, offsets, supLen)
-
-	// Decode and verify via round-trip.
-	raw, err := base64.StdEncoding.DecodeString(result)
-	if err != nil {
-		t.Fatalf("invalid Base64: %v", err)
-	}
+	raw := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
@@ -31,7 +25,6 @@ func TestEncodeOrdered_Simple(t *testing.T) {
 		t.Fatalf("got %d tuples, want 3", len(tuples))
 	}
 
-	// Verify: (offset=0, length=5), (offset=5, length=5), (offset=10, length=3)
 	expected := [][2]int{{0, 5}, {5, 5}, {10, 3}}
 	for i, e := range expected {
 		if tuples[i] != e {
@@ -48,11 +41,7 @@ func TestEncodeOrdered_EmptyLines(t *testing.T) {
 	}
 	supLen := 10
 
-	result := EncodeOrdered(lines, offsets, supLen)
-	raw, err := base64.StdEncoding.DecodeString(result)
-	if err != nil {
-		t.Fatalf("invalid Base64: %v", err)
-	}
+	raw := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
@@ -74,11 +63,7 @@ func TestEncodeOrdered_SingleLine(t *testing.T) {
 	offsets := map[string]int{"test": 0}
 	supLen := 4
 
-	result := EncodeOrdered(lines, offsets, supLen)
-	raw, err := base64.StdEncoding.DecodeString(result)
-	if err != nil {
-		t.Fatalf("invalid Base64: %v", err)
-	}
+	raw := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
@@ -117,3 +102,6 @@ func TestBitsNeeded(t *testing.T) {
 		}
 	}
 }
+
+// Silence the unused import warning.
+var _ = bytes.NewReader

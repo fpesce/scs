@@ -117,7 +117,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 
 	masterString := builder.String()
 
-	// --- Format Generation: Build the 3-line .scs file ---
+	// --- Format Generation: Binary .scs file ---
 
 	// Get the deduplicated unique strings (for mapping).
 	uniqueStrings := pipeline.ExactDeduplication(lines)
@@ -129,21 +129,19 @@ func runBuild(cfg *cli.BuildConfig) error {
 		}
 	}
 
-	// Map offsets via Aho-Corasick single-pass.
+	// Map offsets via suffix array.
 	offsetMap := format.MapOffsets(masterString, nonEmptyUnique)
 
-	// Generate the metadata footer (Line 3).
-	var footer string
+	// Generate the raw binary metadata footer.
+	var footer []byte
 	if cfg.Unordered {
 		footer = format.EncodeUnordered(nonEmptyUnique, offsetMap)
 	} else {
 		footer = format.EncodeOrdered(lines, offsetMap, len(masterString))
 	}
 
-	// Calculate the byte offset for Line 3.
-	// Line 1: 16 chars (Base64 header) + 1 (\n)
-	// Line 2: len(masterString) chars + 1 (\n)
-	footerOffset := uint64(16 + 1 + len(masterString) + 1)
+	// Calculate precise byte offset: 12 header bytes + len(superstring).
+	footerOffset := uint64(12 + len(masterString))
 
 	// Determine separator byte.
 	sepByte := byte('\n')
@@ -151,23 +149,29 @@ func runBuild(cfg *cli.BuildConfig) error {
 		sepByte = cfg.Separator[0]
 	}
 
-	// Generate the header (Line 1).
-	header := format.EncodeHeader(&format.Header{
-		Version:      0x01,
+	// Generate the raw 12-byte header.
+	headerBytes := format.EncodeHeader(&format.Header{
+		Version:      0x02,
 		Separator:    sepByte,
 		IsOrdered:    !cfg.Unordered,
 		FooterOffset: footerOffset,
 	})
 
-	// Write exactly 3 lines, each terminated by \n.
+	// Write contiguous binary: [12B header][superstring][footer].
 	f, err := os.Create(cfg.OutputPath)
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}
 	defer f.Close()
 
-	if _, err := fmt.Fprintf(f, "%s\n%s\n%s\n", header, masterString, footer); err != nil {
-		return fmt.Errorf("writing output: %w", err)
+	if _, err := f.Write(headerBytes); err != nil {
+		return fmt.Errorf("writing header: %w", err)
+	}
+	if _, err := f.WriteString(masterString); err != nil {
+		return fmt.Errorf("writing superstring: %w", err)
+	}
+	if _, err := f.Write(footer); err != nil {
+		return fmt.Errorf("writing footer: %w", err)
 	}
 
 	if cfg.Verbose {
@@ -202,13 +206,12 @@ func runMerge(cfg *cli.MergeConfig) error {
 	survivors, eliminatedMap := pipeline.MergeEliminateSubstrings(superstring1, updateWordStrings)
 
 	// Step 2: Generate mini-superstring from survivors and calculate overlap.
-	fragment, overlapLength := pipeline.TruncateAndAppend(superstring1, survivors, 3, 15)
+	fragment, _ := pipeline.TruncateAndAppend(superstring1, survivors, 3, 15)
 
 	// Step 3: Build the combined superstring.
 	combinedPayload := superstring1 + fragment
 
 	// Step 4: Build the combined word list with correct offsets.
-	// Start with all words from File 1 (offsets unchanged).
 	var allWords []format.Word
 	allWords = append(allWords, words1...)
 
@@ -223,7 +226,6 @@ func runMerge(cfg *cli.MergeConfig) error {
 
 	// Map surviving words' offsets in the new combined payload.
 	if len(survivors) > 0 && fragment != "" {
-		// Get the unique survivors for mapping.
 		uniqueSurvivors := pipeline.ExactDeduplication(survivors)
 		var nonEmpty []string
 		for _, s := range uniqueSurvivors {
@@ -232,8 +234,6 @@ func runMerge(cfg *cli.MergeConfig) error {
 			}
 		}
 
-		// Map offsets within the combined payload for surviving words.
-		// We need to find them in the appended portion.
 		survivorOffsets := format.MapOffsets(combinedPayload, nonEmpty)
 
 		for _, surv := range survivors {
@@ -247,11 +247,10 @@ func runMerge(cfg *cli.MergeConfig) error {
 		}
 	}
 
-	// Step 5: Graceful Downgrade — if either file is UNORDERED, force UNORDERED.
+	// Step 5: Graceful Downgrade.
 	isOrdered := header1.IsOrdered && header2.IsOrdered
 
 	// Step 6: Build the merged footer.
-	// Build an offset map from allWords.
 	offsetMap := make(map[string]int)
 	for _, w := range allWords {
 		if w.String != "" {
@@ -261,9 +260,8 @@ func runMerge(cfg *cli.MergeConfig) error {
 		}
 	}
 
-	var footer string
+	var footer []byte
 	if !isOrdered {
-		// UNORDERED mode: collect unique words.
 		uniqueWords := make([]string, 0)
 		seen := make(map[string]bool)
 		for _, w := range allWords {
@@ -274,7 +272,6 @@ func runMerge(cfg *cli.MergeConfig) error {
 		}
 		footer = format.EncodeUnordered(uniqueWords, offsetMap)
 	} else {
-		// ORDERED mode: preserve chronological order from both files.
 		var chronoLines []string
 		for _, w := range allWords {
 			chronoLines = append(chronoLines, w.String)
@@ -283,31 +280,35 @@ func runMerge(cfg *cli.MergeConfig) error {
 	}
 
 	// Step 7: Calculate footer offset and build header.
-	footerOffset := uint64(16 + 1 + len(combinedPayload) + 1)
+	footerOffset := uint64(12 + len(combinedPayload))
 	mergedHeader := format.EncodeHeader(&format.Header{
-		Version:      0x01,
+		Version:      0x02,
 		Separator:    header1.Separator,
 		IsOrdered:    isOrdered,
 		FooterOffset: footerOffset,
 	})
 
-	// Step 8: Write the merged 3-line file.
+	// Step 8: Write contiguous binary.
 	f, err := os.Create(cfg.OutputPath)
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}
 	defer f.Close()
 
-	if _, err := fmt.Fprintf(f, "%s\n%s\n%s\n", mergedHeader, combinedPayload, footer); err != nil {
-		return fmt.Errorf("writing output: %w", err)
+	if _, err := f.Write(mergedHeader); err != nil {
+		return fmt.Errorf("writing header: %w", err)
+	}
+	if _, err := f.WriteString(combinedPayload); err != nil {
+		return fmt.Errorf("writing superstring: %w", err)
+	}
+	if _, err := f.Write(footer); err != nil {
+		return fmt.Errorf("writing footer: %w", err)
 	}
 
 	if cfg.Verbose {
 		fmt.Printf("Merged: %d + %d words → %d characters written to %s\n",
 			len(words1), len(words2), len(combinedPayload), cfg.OutputPath)
 	}
-
-	_ = overlapLength // Used for the truncation; the combined payload already reflects it.
 
 	return nil
 }
@@ -335,19 +336,27 @@ func runCat(cfg *cli.CatConfig) error {
 }
 
 func runSearch(cfg *cli.SearchConfig) error {
-	// Read the file to get the superstring.
+	// Read the raw file bytes.
 	data, err := os.ReadFile(cfg.FilePath)
 	if err != nil {
 		return fmt.Errorf("reading %q: %w", cfg.FilePath, err)
 	}
 
-	content := string(data)
-	parts := strings.SplitN(content, "\n", 4)
-	if len(parts) < 3 {
-		return fmt.Errorf("invalid .scs file: expected 3 lines")
+	if len(data) < 12 {
+		return fmt.Errorf("invalid .scs file: missing header")
 	}
 
-	superstring := parts[1] // Line 2
+	header, err := format.DecodeHeader(data[:12])
+	if err != nil {
+		return fmt.Errorf("corrupt file: %w", err)
+	}
+
+	if header.FooterOffset > uint64(len(data)) || header.FooterOffset < 12 {
+		return fmt.Errorf("corrupt file: footer offset out of bounds")
+	}
+
+	// Instant O(1) bounds extraction.
+	superstring := string(data[12:header.FooterOffset])
 
 	// Bloom Filter Fast-Path: native substring check.
 	if !strings.Contains(superstring, cfg.Word) {
@@ -364,7 +373,7 @@ func runSearch(cfg *cli.SearchConfig) error {
 	for _, w := range words {
 		if w.String == cfg.Word {
 			fmt.Println("Match found")
-			return nil // Exit 0.
+			return nil
 		}
 	}
 

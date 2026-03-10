@@ -2,14 +2,13 @@ package format
 
 import (
 	"bytes"
-	"encoding/base64"
 	"sort"
 )
 
-// EncodeUnordered generates the UNORDERED mode metadata footer.
+// EncodeUnordered generates the UNORDERED mode metadata footer as raw bytes.
 // Words are grouped by ascending length, offsets within each group are
-// delta-encoded after sorting them ascending. Returns Base64 encoded result.
-func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) string {
+// delta-encoded after sorting them ascending.
+func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) []byte {
 	// Group words by length.
 	lengthGroups := make(map[int][]string)
 	for _, w := range uniqueWords {
@@ -48,5 +47,5 @@ func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) string {
 		}
 	}
 
-	return base64.StdEncoding.EncodeToString(buf.Bytes())
+	return buf.Bytes()
 }

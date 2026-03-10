@@ -2,7 +2,6 @@ package format
 
 import (
 	"bytes"
-	"encoding/base64"
 	"math"
 )
 
@@ -21,10 +20,10 @@ func bitsNeeded(n uint64) uint {
 	return bits
 }
 
-// EncodeOrdered generates the ORDERED mode metadata footer.
+// EncodeOrdered generates the ORDERED mode metadata footer as raw bytes.
 // It preserves the exact chronological sequence of the source text
 // using dynamic bit-packing with ULEB128 headers.
-func EncodeOrdered(chronologicalLines []string, offsetMap map[string]int, superstringByteLen int) string {
+func EncodeOrdered(chronologicalLines []string, offsetMap map[string]int, superstringByteLen int) []byte {
 	totalLineCount := uint64(len(chronologicalLines))
 
 	// Find max word length.
@@ -73,7 +72,7 @@ func EncodeOrdered(chronologicalLines []string, offsetMap map[string]int, supers
 	combined := headerBuf.Bytes()
 	combined = append(combined, bw.Flush()...)
 
-	return base64.StdEncoding.EncodeToString(combined)
+	return combined
 }
 
 // DecodeOrdered parses the ORDERED metadata footer. It returns the

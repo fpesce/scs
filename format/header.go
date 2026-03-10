@@ -1,7 +1,6 @@
 package format
 
 import (
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,10 +17,8 @@ type Header struct {
 // Magic is the 3-byte ASCII signature for SCS files.
 var Magic = [3]byte{'S', 'C', 'S'}
 
-// EncodeHeader packs the Header into exactly 12 bytes and returns
-// the 16-character Base64 encoded string (standard encoding, no padding needed
-// since 12 bytes encode to exactly 16 Base64 characters).
-func EncodeHeader(h *Header) string {
+// EncodeHeader packs the Header into exactly 12 raw bytes.
+func EncodeHeader(h *Header) []byte {
 	var buf [12]byte
 
 	// Bytes 0-2: Magic string "SCS".
@@ -46,17 +43,13 @@ func EncodeHeader(h *Header) string {
 	binary.LittleEndian.PutUint64(leBytes[:], val)
 	copy(buf[5:12], leBytes[0:7])
 
-	return base64.StdEncoding.EncodeToString(buf[:])
+	return buf[:]
 }
 
-// DecodeHeader decodes a 16-character Base64 string into a Header struct.
-func DecodeHeader(s string) (*Header, error) {
-	raw, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("decoding Base64 header: %w", err)
-	}
-	if len(raw) != 12 {
-		return nil, fmt.Errorf("header must be exactly 12 bytes, got %d", len(raw))
+// DecodeHeader decodes 12 raw bytes into a Header struct.
+func DecodeHeader(raw []byte) (*Header, error) {
+	if len(raw) < 12 {
+		return nil, fmt.Errorf("header must be at least 12 bytes, got %d", len(raw))
 	}
 
 	// Validate magic string.
@@ -65,8 +58,8 @@ func DecodeHeader(s string) (*Header, error) {
 	}
 
 	// Validate version.
-	if raw[3] != 0x01 {
-		return nil, fmt.Errorf("unsupported version: 0x%02X (expected 0x01)", raw[3])
+	if raw[3] != 0x02 {
+		return nil, fmt.Errorf("unsupported version: 0x%02X (expected 0x02)", raw[3])
 	}
 
 	h := &Header{

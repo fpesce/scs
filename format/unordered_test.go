@@ -2,7 +2,6 @@ package format
 
 import (
 	"bytes"
-	"encoding/base64"
 	"testing"
 )
 
@@ -14,13 +13,7 @@ func TestEncodeUnordered_Simple(t *testing.T) {
 		"xyz": 10,
 	}
 
-	result := EncodeUnordered(words, offsets)
-
-	// Decode and verify the binary structure.
-	raw, err := base64.StdEncoding.DecodeString(result)
-	if err != nil {
-		t.Fatalf("invalid Base64: %v", err)
-	}
+	raw := EncodeUnordered(words, offsets)
 
 	r := bytes.NewReader(raw)
 
@@ -95,13 +88,13 @@ func TestEncodeUnordered_Deterministic(t *testing.T) {
 	}
 
 	// Run 10 times, assert identical output.
-	var results []string
+	var results [][]byte
 	for i := 0; i < 10; i++ {
 		results = append(results, EncodeUnordered(words, offsets))
 	}
 	for i := 1; i < len(results); i++ {
-		if results[i] != results[0] {
-			t.Fatalf("non-deterministic output: run %d = %q, run 0 = %q", i, results[i], results[0])
+		if !bytes.Equal(results[i], results[0]) {
+			t.Fatalf("non-deterministic output: run %d differs from run 0", i)
 		}
 	}
 }
@@ -110,11 +103,7 @@ func TestEncodeUnordered_SingleWord(t *testing.T) {
 	words := []string{"test"}
 	offsets := map[string]int{"test": 42}
 
-	result := EncodeUnordered(words, offsets)
-	raw, err := base64.StdEncoding.DecodeString(result)
-	if err != nil {
-		t.Fatalf("invalid Base64: %v", err)
-	}
+	raw := EncodeUnordered(words, offsets)
 
 	r := bytes.NewReader(raw)
 
