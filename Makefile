@@ -13,6 +13,7 @@ e2etest:
 		echo "========================================"; \
 		echo "Running scs on $$f..."; \
 		start=$$(date +%s%3N); \
+		/usr/bin/time -v ./scs build -i "$$f" -o "$${f%.txt}.scs" 2>&1 | grep -E "(Maximum resident|Command)" || true; \
 		./scs build -i "$$f" -o "$${f%.txt}.scs"; \
 		end=$$(date +%s%3N); \
 		elapsed=$$((end-start)); \

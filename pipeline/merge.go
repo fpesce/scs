@@ -1,48 +1,82 @@
 package pipeline
 
 import (
+	"index/suffixarray"
+	"runtime"
 	"sort"
+	"sync"
 
 	"github.com/joke/scs/graph"
 )
 
-// MergeEliminateSubstrings builds an Aho-Corasick automaton from updateWords
-// and streams the primaryPayload through it. Words found organically inside
+// MergeEliminateSubstrings builds a suffix array from primaryPayload and
+// concurrently checks which updateWords exist within it. Words found inside
 // the primary payload are "eliminated" (remapped to primary's address space).
 // Returns survivors (words not found) and a map of eliminated words to their offsets.
 func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (survivors []string, eliminatedMap map[string]int) {
 	eliminatedMap = make(map[string]int)
-
 	if len(updateWords) == 0 || len(primaryPayload) == 0 {
 		return updateWords, eliminatedMap
 	}
 
-	// Build automaton from update words.
-	ac := graph.InitializeAutomaton(len(updateWords) * 4)
-	for i, w := range updateWords {
-		if w != "" {
-			ac.InsertPattern(w, i)
-		}
+	sa := suffixarray.New([]byte(primaryPayload))
+
+	numWorkers := runtime.NumCPU()
+	chunkSize := (len(updateWords) + numWorkers - 1) / numWorkers
+
+	type workerResult struct {
+		survivors []string
+		elim      map[string]int
 	}
-	ac.ComputeFailureLinks()
+	results := make([]workerResult, numWorkers)
 
-	// Stream primary payload through the automaton.
-	matches := ac.Search(primaryPayload)
-
-	// Track which update words were found, recording the first offset.
-	found := make(map[int]int) // patternID -> offset
-	for _, m := range matches {
-		if _, exists := found[m.PatternID]; !exists {
-			found[m.PatternID] = m.Start
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		start := w * chunkSize
+		if start >= len(updateWords) {
+			break
 		}
-	}
+		end := start + chunkSize
+		if end > len(updateWords) {
+			end = len(updateWords)
+		}
 
-	// Partition into eliminated and survivors.
-	for i, w := range updateWords {
-		if offset, ok := found[i]; ok {
-			eliminatedMap[w] = offset
-		} else {
-			survivors = append(survivors, w)
+		wg.Add(1)
+		go func(w, start, end int) {
+			defer wg.Done()
+
+			var localSurvivors []string
+			localElim := make(map[string]int)
+
+			for i := start; i < end; i++ {
+				word := updateWords[i]
+				if word == "" {
+					localElim[word] = 0
+					continue
+				}
+				matches := sa.Lookup([]byte(word), 1)
+				if len(matches) > 0 {
+					localElim[word] = matches[0]
+				} else {
+					localSurvivors = append(localSurvivors, word)
+				}
+			}
+
+			results[w] = workerResult{
+				survivors: localSurvivors,
+				elim:      localElim,
+			}
+		}(w, start, end)
+	}
+	wg.Wait()
+
+	// Recombine results sequentially.
+	for _, res := range results {
+		if len(res.survivors) > 0 {
+			survivors = append(survivors, res.survivors...)
+		}
+		for k, v := range res.elim {
+			eliminatedMap[k] = v
 		}
 	}
 

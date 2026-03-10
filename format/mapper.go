@@ -1,39 +1,65 @@
 package format
 
 import (
-	"github.com/joke/scs/graph"
+	"index/suffixarray"
+	"runtime"
+	"sync"
 )
 
-// MapOffsets performs a single O(N) Aho-Corasick pass over the masterString
+// MapOffsets performs a single suffix array lookup over the masterString
 // to locate one valid starting byte offset for every unique source string.
+// Uses concurrent workers for O(N log M) matching with flat ~4x memory footprint.
 func MapOffsets(masterString string, uniqueSourceStrings []string) map[string]int {
 	if len(uniqueSourceStrings) == 0 {
 		return make(map[string]int)
 	}
 
-	// Build the automaton.
-	ac := graph.InitializeAutomaton(len(uniqueSourceStrings) * 4)
-	for i, s := range uniqueSourceStrings {
-		if s != "" {
-			ac.InsertPattern(s, i)
-		}
-	}
-	ac.ComputeFailureLinks()
+	sa := suffixarray.New([]byte(masterString))
 
-	// Single-pass search.
-	matches := ac.Search(masterString)
-
-	// Record exactly one offset per unique string (first occurrence).
 	offsetMap := make(map[string]int, len(uniqueSourceStrings))
-	found := make(map[int]bool, len(uniqueSourceStrings))
+	var mu sync.Mutex
 
-	for _, m := range matches {
-		if found[m.PatternID] {
-			continue
+	numWorkers := runtime.NumCPU()
+	chunkSize := (len(uniqueSourceStrings) + numWorkers - 1) / numWorkers
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		start := w * chunkSize
+		if start >= len(uniqueSourceStrings) {
+			break
 		}
-		found[m.PatternID] = true
-		offsetMap[uniqueSourceStrings[m.PatternID]] = m.Start
+		end := start + chunkSize
+		if end > len(uniqueSourceStrings) {
+			end = len(uniqueSourceStrings)
+		}
+
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+
+			// Use local map to prevent lock contention.
+			localMap := make(map[string]int, end-start)
+			for i := start; i < end; i++ {
+				s := uniqueSourceStrings[i]
+				if s == "" {
+					localMap[s] = 0
+					continue
+				}
+				// Fetch ANY 1 match (the SCS decoder relies on a valid slice offset).
+				matches := sa.Lookup([]byte(s), 1)
+				if len(matches) > 0 {
+					localMap[s] = matches[0]
+				}
+			}
+
+			mu.Lock()
+			for k, v := range localMap {
+				offsetMap[k] = v
+			}
+			mu.Unlock()
+		}(start, end)
 	}
+	wg.Wait()
 
 	return offsetMap
 }

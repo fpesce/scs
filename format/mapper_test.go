@@ -8,21 +8,20 @@ func TestMapOffsets_Simple(t *testing.T) {
 
 	offsets := MapOffsets(master, words)
 
-	expected := map[string]int{
-		"abc": 0,
-		"def": 3,
-		"ghi": 6,
-		"jkl": 9,
-	}
-
-	for word, want := range expected {
-		got, ok := offsets[word]
+	// Verify all words are found and the offset points to the correct content.
+	for _, word := range words {
+		off, ok := offsets[word]
 		if !ok {
 			t.Errorf("word %q not found in offset map", word)
 			continue
 		}
-		if got != want {
-			t.Errorf("offset[%q] = %d, want %d", word, got, want)
+		if off+len(word) > len(master) {
+			t.Errorf("offset[%q] = %d, out of bounds (master len=%d)", word, off, len(master))
+			continue
+		}
+		if master[off:off+len(word)] != word {
+			t.Errorf("offset[%q] = %d, but master[%d:%d] = %q",
+				word, off, off, off+len(word), master[off:off+len(word)])
 		}
 	}
 }
