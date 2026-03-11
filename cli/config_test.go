@@ -2,6 +2,7 @@ package cli
 
 import (
 	"testing"
+	"time"
 )
 
 func TestParseSubcommand_Build(t *testing.T) {
@@ -67,6 +68,21 @@ func TestParseSubcommand_Build(t *testing.T) {
 			args:    []string{"build", "-i", "in.txt"},
 			wantErr: true,
 		},
+		{
+			name: "ga flags parsed",
+			args: []string{"build", "-i", "in.txt", "-o", "out.scs", "--ga-time", "30s", "--ga-pop", "200", "--ga-tourney", "5", "--ga-stag", "100"},
+			wantConfig: &BuildConfig{
+				InputPath:  "in.txt",
+				OutputPath: "out.scs",
+				MinOverlap: 3,
+				DPLimit:    15,
+				Separator:  "\n",
+				GATime:     30 * time.Second,
+				GAPop:      200,
+				GATourney:  5,
+				GAStag:     100,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -105,6 +121,18 @@ func TestParseSubcommand_Build(t *testing.T) {
 			}
 			if bc.Verbose != tt.wantConfig.Verbose {
 				t.Errorf("Verbose = %v, want %v", bc.Verbose, tt.wantConfig.Verbose)
+			}
+			if bc.GATime != tt.wantConfig.GATime {
+				t.Errorf("GATime = %v, want %v", bc.GATime, tt.wantConfig.GATime)
+			}
+			if bc.GAPop != tt.wantConfig.GAPop {
+				t.Errorf("GAPop = %d, want %d", bc.GAPop, tt.wantConfig.GAPop)
+			}
+			if bc.GATourney != tt.wantConfig.GATourney {
+				t.Errorf("GATourney = %d, want %d", bc.GATourney, tt.wantConfig.GATourney)
+			}
+			if bc.GAStag != tt.wantConfig.GAStag {
+				t.Errorf("GAStag = %d, want %d", bc.GAStag, tt.wantConfig.GAStag)
 			}
 		})
 	}

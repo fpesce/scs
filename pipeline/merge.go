@@ -7,6 +7,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/joke/scs/cli"
 	"github.com/joke/scs/graph"
 )
 
@@ -108,7 +109,10 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 
 	// Generate mini-superstring.
 	islands := ShatterGraph(unique, minOverlap)
-	superWords := AssembleConcurrently(islands, dpLimit, minOverlap, false)
+	superWords := AssembleConcurrently(islands, &cli.BuildConfig{
+		DPLimit:    dpLimit,
+		MinOverlap: minOverlap,
+	})
 
 	// Sort the same way as build.
 	sort.Slice(superWords, func(i, j int) bool {

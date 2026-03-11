@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"strings"
+	"time"
 
 	"github.com/joke/scs/graph"
 )
@@ -18,10 +19,12 @@ import (
 // during hierarchical recursive merging where superstrings grow to hundreds
 // of thousands of characters.
 func SolveGreedyHeap(island []string, minOverlap int) string {
-	if minOverlap <= 0 {
-		minOverlap = 1
-	}
+	return SolveGreedyHeapWithDeadline(island, minOverlap, time.Time{})
+}
 
+// SolveGreedyHeapWithDeadline is like SolveGreedyHeap but aborts gracefully
+// when the deadline is exceeded, returning a partially-assembled result.
+func SolveGreedyHeapWithDeadline(island []string, minOverlap int, deadline time.Time) string {
 	n := len(island)
 	if n == 0 {
 		return ""
@@ -29,6 +32,43 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 	if n == 1 {
 		return island[0]
 	}
+
+	path, overlaps := solveGreedyPathWithDeadline(island, minOverlap, deadline)
+
+	// Pre-calculate exact builder capacity for zero-realloc final assembly.
+	totalLen := len(island[path[0]])
+	for i := 0; i < len(path)-1; i++ {
+		totalLen += len(island[path[i+1]]) - overlaps[i]
+	}
+
+	var result strings.Builder
+	result.Grow(totalLen)
+
+	result.WriteString(island[path[0]])
+	for i := 0; i < len(path)-1; i++ {
+		ov := overlaps[i]
+		result.WriteString(island[path[i+1]][ov:])
+	}
+
+	return result.String()
+}
+
+// solveGreedyPath performs the core greedy matching and returns the
+// permutation path (index order) and the overlap between consecutive
+// path elements. This is used by SolveGreedyHeap and to seed the GA.
+func solveGreedyPath(island []string, minOverlap int) ([]int, []int) {
+	return solveGreedyPathWithDeadline(island, minOverlap, time.Time{})
+}
+
+// solveGreedyPathWithDeadline is like solveGreedyPath but respects a deadline.
+// When the deadline expires, it stops matching and builds the path from
+// whatever chains have been assembled so far.
+func solveGreedyPathWithDeadline(island []string, minOverlap int, deadline time.Time) ([]int, []int) {
+	if minOverlap <= 0 {
+		minOverlap = 1
+	}
+
+	n := len(island)
 
 	maxLen := 0
 	for _, s := range island {
@@ -61,6 +101,11 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 
 	// Progressively match from longest possible overlap down to 1.
 	for L := maxLen; L >= 1; L-- {
+		// Break cleanly when deadline expires — yields a partially-assembled sequence.
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			goto buildPath
+		}
+
 		clear(head)
 
 		// Build inline linked list of length-L prefixes for available v nodes.
@@ -80,6 +125,11 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 
 		// For each available u (next[u]==-1), check if its suffix matches.
 		for u := 0; u < n; u++ {
+			// Throttle syscall checks with bitwise mask.
+			if !deadline.IsZero() && u&4095 == 0 && time.Now().After(deadline) {
+				goto buildPath
+			}
+
 			if next[u] != -1 || len(island[u]) < L {
 				continue
 			}
@@ -114,36 +164,26 @@ func SolveGreedyHeap(island []string, minOverlap int) string {
 		}
 	}
 
-	// Pre-calculate exact builder capacity for zero-realloc final assembly.
-	totalLen := 0
+buildPath:
+	// Build the permutation path by tracing chains from head nodes.
+	// When multiple chains exist, insert overlap=0 at chain boundaries.
+	path := make([]int, 0, n)
+	overlaps := make([]int, 0, n-1)
 	for i := 0; i < n; i++ {
 		if prev[i] == -1 {
+			// Insert zero-overlap boundary between chains.
+			if len(path) > 0 {
+				overlaps = append(overlaps, 0)
+			}
 			curr := i
-			totalLen += len(island[curr])
+			path = append(path, curr)
 			for next[curr] != -1 {
-				nxt := next[curr]
-				totalLen += len(island[nxt]) - nextOverlap[curr]
-				curr = nxt
+				overlaps = append(overlaps, nextOverlap[curr])
+				curr = next[curr]
+				path = append(path, curr)
 			}
 		}
 	}
 
-	var result strings.Builder
-	result.Grow(totalLen)
-
-	// Reconstruct chains from path heads (nodes with no predecessor).
-	for i := 0; i < n; i++ {
-		if prev[i] == -1 {
-			curr := i
-			result.WriteString(island[curr])
-			for next[curr] != -1 {
-				nxt := next[curr]
-				ov := nextOverlap[curr]
-				result.WriteString(island[nxt][ov:])
-				curr = nxt
-			}
-		}
-	}
-
-	return result.String()
+	return path, overlaps
 }

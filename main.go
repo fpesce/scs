@@ -84,7 +84,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 	}
 
 	// Phase 4: Solve islands concurrently via worker pool.
-	superWords := pipeline.AssembleConcurrently(islands, cfg.DPLimit, cfg.MinOverlap, cfg.Verbose)
+	superWords := pipeline.AssembleConcurrently(islands, cfg)
 	if cfg.Verbose {
 		fmt.Printf("Phase 4: assembled %d super-words\n", len(superWords))
 	}
@@ -107,7 +107,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 	for i, sw := range superWords {
 		builder.WriteString(sw)
 		if cfg.Verbose {
-			fmt.Printf("\r  Concatenating... %d/%d (%d%%)",
+			fmt.Printf("\r\033[K  Concatenating... %d/%d (%d%%)",
 				i+1, len(superWords), (i+1)*100/len(superWords))
 		}
 	}

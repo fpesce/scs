@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"time"
 )
 
 // BuildConfig holds configuration for the build subcommand.
@@ -17,6 +18,10 @@ type BuildConfig struct {
 	Separator  string
 	Verbose    bool
 	Profile    bool
+	GATime     time.Duration
+	GAPop      int
+	GATourney  int
+	GAStag     int
 }
 
 // MergeConfig holds configuration for the merge subcommand.
@@ -81,6 +86,10 @@ func parseBuild(args []string) (*BuildConfig, error) {
 	fs.BoolVar(&cfg.Verbose, "v", false, "Enable verbose progress updates")
 	fs.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose progress updates")
 	fs.BoolVar(&cfg.Profile, "profile", false, "Write CPU profile to cpu.prof")
+	fs.DurationVar(&cfg.GATime, "ga-time", 0, "GA time budget (e.g. 60s, 2m)")
+	fs.IntVar(&cfg.GAPop, "ga-pop", 0, "GA population size per island")
+	fs.IntVar(&cfg.GATourney, "ga-tourney", 0, "GA tournament size")
+	fs.IntVar(&cfg.GAStag, "ga-stag", 0, "GA stagnation threshold")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("parsing build flags: %w", err)

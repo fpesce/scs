@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/joke/scs/cli"
 )
 
 // TestPipelineDeterminism generates random overlapping strings, runs them
@@ -44,7 +46,10 @@ func TestPipelineDeterminism(t *testing.T) {
 		survivors := ExactDeduplication(input)
 		survivors = EliminateSubstrings(survivors)
 		islands := ShatterGraph(survivors, 3)
-		superWords := AssembleConcurrently(islands, 15, 3, false)
+		superWords := AssembleConcurrently(islands, &cli.BuildConfig{
+			DPLimit:    15,
+			MinOverlap: 3,
+		})
 
 		sort.Slice(superWords, func(i, j int) bool {
 			if len(superWords[i]) == len(superWords[j]) {

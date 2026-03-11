@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/joke/scs/cli"
 	"github.com/joke/scs/pipeline"
 )
 
@@ -165,7 +166,10 @@ func TestAllWordsAreIncluded(t *testing.T) {
 	survivors := pipeline.ExactDeduplication(inputWords)
 	survivors = pipeline.EliminateSubstrings(survivors)
 	islands := pipeline.ShatterGraph(survivors, 3)
-	superWords := pipeline.AssembleConcurrently(islands, 15, 3, false)
+	superWords := pipeline.AssembleConcurrently(islands, &cli.BuildConfig{
+		DPLimit:    15,
+		MinOverlap: 3,
+	})
 
 	finalSuperstring := strings.Join(superWords, "")
 

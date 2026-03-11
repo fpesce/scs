@@ -26,4 +26,9 @@ e2etest:
 		fi; \
 		echo "Execution Time: $${elapsed}ms"; \
 		echo "Size: $$txt_size B -> $$scs_size B ($$ratio%)"; \
+		echo "--- GA run ---"; \
+		./scs build -i "$$f" -o "$${f%.txt}-ga.scs" --ga-time 2s -v; \
+		ga_size=$$(wc -c < "$${f%.txt}-ga.scs"); \
+		ga_ratio=$$(awk "BEGIN {printf \"%.2f\", $$ga_size / $$txt_size * 100}"); \
+		echo "GA Size: $$txt_size B -> $$ga_size B ($$ga_ratio%)"; \
 	done

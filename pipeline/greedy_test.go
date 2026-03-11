@@ -69,3 +69,37 @@ func TestSolveGreedyHeap_Empty(t *testing.T) {
 		t.Errorf("expected empty string, got %q", result)
 	}
 }
+
+func TestSolveGreedyPath(t *testing.T) {
+	island := []string{"abcdef", "defghi", "ghijkl", "xyz"}
+	path, overlaps := solveGreedyPath(island, 3)
+
+	// Verify path is a valid permutation: all indices 0..N-1 exactly once.
+	n := len(island)
+	if len(path) != n {
+		t.Fatalf("path length = %d, want %d", len(path), n)
+	}
+
+	seen := make(map[int]bool)
+	for _, idx := range path {
+		if idx < 0 || idx >= n {
+			t.Fatalf("path contains out-of-range index %d", idx)
+		}
+		if seen[idx] {
+			t.Fatalf("path contains duplicate index %d", idx)
+		}
+		seen[idx] = true
+	}
+
+	// Verify overlaps length = len(path) - 1.
+	if len(overlaps) != n-1 {
+		t.Fatalf("overlaps length = %d, want %d", len(overlaps), n-1)
+	}
+
+	// Verify non-negative overlaps.
+	for i, ov := range overlaps {
+		if ov < 0 {
+			t.Errorf("overlaps[%d] = %d, want >= 0", i, ov)
+		}
+	}
+}

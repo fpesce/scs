@@ -3,6 +3,8 @@ package pipeline
 import (
 	"strings"
 	"testing"
+
+	"github.com/joke/scs/cli"
 )
 
 func TestAssembleConcurrently(t *testing.T) {
@@ -49,7 +51,11 @@ func TestAssembleConcurrently(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := AssembleConcurrently(tt.islands, tt.dpLimit, tt.minOverlap, false)
+			cfg := &cli.BuildConfig{
+				DPLimit:    tt.dpLimit,
+				MinOverlap: tt.minOverlap,
+			}
+			result := AssembleConcurrently(tt.islands, cfg)
 
 			if tt.name == "empty input" {
 				if result != nil {
@@ -82,9 +88,14 @@ func TestAssembleConcurrently_Deterministic(t *testing.T) {
 		{"hello"},
 	}
 
+	cfg := &cli.BuildConfig{
+		DPLimit:    15,
+		MinOverlap: 2,
+	}
+
 	var prev []string
 	for run := 0; run < 5; run++ {
-		result := AssembleConcurrently(islands, 15, 2, false)
+		result := AssembleConcurrently(islands, cfg)
 		if prev != nil {
 			for i := range result {
 				if result[i] != prev[i] {
