@@ -101,14 +101,14 @@ func TestMutateSwap(t *testing.T) {
 	}
 }
 
-func TestMutateFlip(t *testing.T) {
+func TestMutateInsert(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 	for trial := 0; trial < 200; trial++ {
 		n := 20
 		path := rng.Perm(n)
-		mutateFlip(path, rng)
+		mutateInsert(path, rng)
 		if !isValidPermutation(path, n) {
-			t.Fatalf("mutateFlip produced invalid permutation: %v", path)
+			t.Fatalf("mutateInsert produced invalid permutation: %v", path)
 		}
 	}
 }

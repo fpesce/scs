@@ -77,8 +77,10 @@ func mutateSwap(path []int, rng *rand.Rand) {
 	path[i], path[j] = path[j], path[i]
 }
 
-// mutateFlip picks two random distinct indices and reverses the sub-slice.
-func mutateFlip(path []int, rng *rand.Rand) {
+// mutateInsert removes a random element and re-inserts it at another position.
+// Unlike 2-opt reversal (mutateFlip), this preserves directed edge ordering,
+// which is critical for ATSP problems like SCS where overlap(A,B) != overlap(B,A).
+func mutateInsert(path []int, rng *rand.Rand) {
 	n := len(path)
 	if n < 2 {
 		return
@@ -88,14 +90,14 @@ func mutateFlip(path []int, rng *rand.Rand) {
 	if j >= i {
 		j++
 	}
-	if i > j {
-		i, j = j, i
+
+	val := path[i]
+	if i < j {
+		copy(path[i:j], path[i+1:j+1])
+	} else {
+		copy(path[j+1:i+1], path[j:i])
 	}
-	for i < j {
-		path[i], path[j] = path[j], path[i]
-		i++
-		j--
-	}
+	path[j] = val
 }
 
 // mutateScramble picks two random distinct indices and shuffles the sub-slice.
@@ -254,7 +256,7 @@ func initPopulation(popSize int, island []string, greedyPath []int, cache *lazyC
 			case 0:
 				mutateSwap(c.path, rng)
 			case 1:
-				mutateFlip(c.path, rng)
+				mutateInsert(c.path, rng)
 			case 2:
 				mutateScramble(c.path, rng)
 			}
@@ -343,6 +345,9 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 	stagnationLimit := cfg.GAStag
 	if stagnationLimit <= 0 {
 		stagnationLimit = n * 2
+		if stagnationLimit < 10000 {
+			stagnationLimit = 10000 // Give small islands enough time to converge.
+		}
 	}
 	if concurrency < 1 {
 		concurrency = 1
@@ -419,33 +424,57 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 					}
 				}
 
-				// Tournament selection.
+				// --- 1. CATACLYSMIC RESTART ---
+				// When stagnation reaches the limit, the population has converged
+				// to a local optimum. Instead of endlessly scrambling (which
+				// wastes CPU and never resets), we "extinct" the population:
+				// keep the elite, re-initialize the rest, and reset stagnation
+				// so SCX crossover resumes with fresh genetic material.
+				if stagnation >= stagnationLimit {
+					logger.LogStagnation(n, stagnation)
+
+					// Preserve the global elite to prevent regression.
+					copy(pop[0].path, globalBestPath)
+					pop[0].fitness = globalBestFitness
+
+					// Re-initialize the rest of the population.
+					for i := 1; i < len(pop); i++ {
+						if !deadline.IsZero() && time.Now().After(deadline) {
+							break
+						}
+						if rng.Intn(2) == 0 {
+							// 50%: Heavy local exploration of the elite.
+							copy(pop[i].path, globalBestPath)
+							mutateScramble(pop[i].path, rng)
+							mutateInsert(pop[i].path, rng)
+						} else {
+							// 50%: Fresh random immigrant.
+							copy(pop[i].path, rng.Perm(n))
+						}
+						pop[i].fitness = evaluateFitness(pop[i].path, cache, deadline)
+					}
+
+					// CRITICAL: reset so SCX crossover resumes.
+					stagnation = 0
+					continue
+				}
+
+				// --- 2. NORMAL CROSSOVER & MUTATION ---
 				idxA := tournamentSelect(pop, tourneySize, rng)
 				idxB := tournamentSelect(pop, tourneySize, rng)
 
-				var offspringFitness int
+				crossoverSCX(offspringPath, pop[idxA].path, pop[idxB].path, cache, visited, rng, posA, posB)
 
-				if stagnation < stagnationLimit {
-					// Standard mode: SCX + 10% mutation.
-					crossoverSCX(offspringPath, pop[idxA].path, pop[idxB].path, cache, visited, rng, posA, posB)
-					if rng.Intn(10) == 0 {
-						switch rng.Intn(2) {
-						case 0:
-							mutateSwap(offspringPath, rng)
-						case 1:
-							mutateFlip(offspringPath, rng)
-						}
+				if rng.Intn(10) == 0 {
+					switch rng.Intn(2) {
+					case 0:
+						mutateSwap(offspringPath, rng)
+					case 1:
+						mutateInsert(offspringPath, rng)
 					}
-				} else {
-					// Panic mode: aggressive mutations to break local optimum.
-					copy(offspringPath, pop[idxA].path)
-					mutateScramble(offspringPath, rng)
-					mutateFlip(offspringPath, rng)
-					mutateSwap(offspringPath, rng)
-					logger.LogStagnation(n, stagnation)
 				}
 
-				offspringFitness = evaluateFitness(offspringPath, cache, deadline)
+				offspringFitness := evaluateFitness(offspringPath, cache, deadline)
 
 				// Zero-allocation replacement: find worst individual and overwrite.
 				worstIdx := 0

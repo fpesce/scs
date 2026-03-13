@@ -335,7 +335,7 @@ func AssembleConcurrently(islands [][]string, cfg *cli.BuildConfig) []string {
 					results[idx] = SolveExactDP(island, cfg.MinOverlap)
 				} else if budgets != nil && budgets[idx] >= 10*time.Millisecond {
 					wallClock := cfg.GATime
-					if wallClock <= 0 {
+					if wallClock <= 0 || budgets[idx] < wallClock {
 						wallClock = budgets[idx]
 					}
 					cores := 1
