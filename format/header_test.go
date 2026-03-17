@@ -6,8 +6,8 @@ import (
 
 func TestHeaderRoundTrip(t *testing.T) {
 	tests := []struct {
-		name      string
-		header    *Header
+		name   string
+		header *Header
 	}{
 		{
 			name: "ordered with newline separator",

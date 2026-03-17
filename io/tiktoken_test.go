@@ -7,6 +7,7 @@ import (
 )
 
 func testdataPath(name string) string {
+	//nolint:dogsled // runtime.Caller returns 4 values, only filename is needed
 	_, filename, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(filename), "..", "testdata", name)
 }

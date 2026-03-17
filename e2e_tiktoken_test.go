@@ -159,7 +159,7 @@ func decodeFooterOrder(t *testing.T, footerBytes []byte, superstring string) []s
 		count := r.readULEB128(t)
 
 		absOffset := uint64(0)
-		for j := uint64(0); j < count; j++ {
+		for range count {
 			delta := r.readULEB128(t)
 			absOffset += delta
 

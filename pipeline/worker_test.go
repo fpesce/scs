@@ -94,7 +94,7 @@ func TestAssembleConcurrently_Deterministic(t *testing.T) {
 	}
 
 	var prev []string
-	for run := 0; run < 5; run++ {
+	for run := range 5 {
 		result := AssembleConcurrently(islands, cfg)
 		if prev != nil {
 			for i := range result {

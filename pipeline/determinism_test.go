@@ -2,7 +2,7 @@ package pipeline
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
 	"math/rand"
 	"sort"
 	"strings"
@@ -24,8 +24,8 @@ func TestPipelineDeterminism(t *testing.T) {
 		base[i] = byte('a' + rng.Intn(6)) // Small alphabet increases overlaps.
 	}
 
-	var words []string
-	for i := 0; i < 50; i++ {
+	words := make([]string, 0, 50)
+	for range 50 {
 		start := rng.Intn(baseLen - 10)
 		length := 5 + rng.Intn(20)
 		if start+length > baseLen {
@@ -36,9 +36,9 @@ func TestPipelineDeterminism(t *testing.T) {
 
 	// Run the pipeline 10 times and collect hashes.
 	const iterations = 10
-	var hashes []string
+	hashes := make([]string, 0, iterations)
 
-	for iter := 0; iter < iterations; iter++ {
+	for range iterations {
 		// Copy words to avoid mutation.
 		input := make([]string, len(words))
 		copy(input, words)
@@ -60,7 +60,7 @@ func TestPipelineDeterminism(t *testing.T) {
 
 		result := strings.Join(superWords, "")
 		h := sha256.Sum256([]byte(result))
-		hashes = append(hashes, fmt.Sprintf("%x", h))
+		hashes = append(hashes, hex.EncodeToString(h[:]))
 	}
 
 	// Assert all hashes are identical.

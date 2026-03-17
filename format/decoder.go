@@ -12,7 +12,7 @@ import (
 type Word struct {
 	String string
 	Offset int
-	Length  int
+	Length int
 }
 
 // DecodeSCS reads and parses an .scs file, returning the header,
@@ -24,7 +24,7 @@ func DecodeSCS(filepath string) (*Header, string, []Word, error) {
 		return nil, "", nil, fmt.Errorf("reading %q: %w", filepath, err)
 	}
 
-	if len(data) < 12 {
+	if len(data) < HeaderSize {
 		return nil, "", nil, errors.New("invalid .scs file: missing header")
 	}
 
@@ -81,9 +81,9 @@ func decodeOrderedFooter(footerBytes []byte, superstring string) ([]Word, error)
 	br := NewBitReader(remaining)
 
 	words := make([]Word, 0, totalLineCount)
-	for i := uint64(0); i < totalLineCount; i++ {
-		length := int(br.ReadBits(lengthBits))
-		offset := int(br.ReadBits(offsetBits))
+	for range totalLineCount {
+		length := int(br.ReadBits(lengthBits)) //nolint:gosec // G115: bounded by check below
+		offset := int(br.ReadBits(offsetBits)) //nolint:gosec // G115: bounded by check below
 
 		if length == 0 {
 			words = append(words, Word{String: "", Offset: 0, Length: 0})
@@ -123,14 +123,14 @@ func decodeUnorderedFooter(footerBytes []byte, superstring string) ([]Word, erro
 		}
 
 		absOffset := 0
-		for j := uint64(0); j < count; j++ {
+		for range count {
 			delta, _, err := DecodeULEB128(r)
 			if err != nil {
 				return nil, fmt.Errorf("reading delta offset: %w", err)
 			}
-			absOffset += int(delta)
+			absOffset += int(delta) //nolint:gosec // G115: bounded by check below
 
-			length := int(wordLen)
+			length := int(wordLen) //nolint:gosec // G115: bounded by check below
 
 			// CRITICAL SECURITY CHECK: bounds validation.
 			if absOffset+length > len(superstring) {

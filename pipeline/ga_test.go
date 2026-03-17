@@ -91,7 +91,7 @@ func isValidPermutation(path []int, n int) bool {
 
 func TestMutateSwap(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 200; trial++ {
+	for range 200 {
 		n := 20
 		path := rng.Perm(n)
 		mutateSwap(path, rng)
@@ -103,7 +103,7 @@ func TestMutateSwap(t *testing.T) {
 
 func TestMutateInsert(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 200; trial++ {
+	for range 200 {
 		n := 20
 		path := rng.Perm(n)
 		mutateInsert(path, rng)
@@ -115,7 +115,7 @@ func TestMutateInsert(t *testing.T) {
 
 func TestMutateScramble(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 200; trial++ {
+	for range 200 {
 		n := 20
 		path := rng.Perm(n)
 		mutateScramble(path, rng)
@@ -136,7 +136,7 @@ func TestSCX_ValidPermutation(t *testing.T) {
 	posA := make([]int, n)
 	posB := make([]int, n)
 
-	for trial := 0; trial < 500; trial++ {
+	for trial := range 500 {
 		parentA := rng.Perm(n)
 		parentB := rng.Perm(n)
 		crossoverSCX(offspring, parentA, parentB, cache, visited, rng, posA, posB)
@@ -148,10 +148,12 @@ func TestSCX_ValidPermutation(t *testing.T) {
 }
 
 func TestInitPopulation(t *testing.T) {
-	island := []string{"abcdef", "defghi", "ghijkl", "jklmno", "mnopqr",
+	island := []string{
+		"abcdef", "defghi", "ghijkl", "jklmno", "mnopqr",
 		"alpha", "bravo", "charlie", "delta", "echo",
 		"foxtrot", "golf", "hotel", "india", "juliet",
-		"kilo", "lima", "mike", "november", "oscar"}
+		"kilo", "lima", "mike", "november", "oscar",
+	}
 	n := len(island)
 	cache := newLazyCache(island)
 	rng := rand.New(rand.NewSource(42))

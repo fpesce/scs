@@ -12,6 +12,21 @@ import (
 	"github.com/joke/scs/cli"
 )
 
+const (
+	// initialBudgetFraction is the wall-clock fraction for the initial GA pass.
+	initialBudgetFraction = 0.60
+	// remixBudgetFraction is the wall-clock fraction for the remix pass.
+	remixBudgetFraction = 0.15
+	// compressionRatioThreshold flags chunks with CR > this as underperforming.
+	compressionRatioThreshold = 0.85
+	// worstChunkDivisor selects the worst 1/Nth of chunks for remixing.
+	worstChunkDivisor = 5
+	// minBudgetMillis is the minimum GA budget before falling back to greedy.
+	minBudgetMillis = 10
+	// defaultChunkSize caps hierarchical chunking to bound memory.
+	defaultChunkSize = 20000
+)
+
 // SolveHierarchicalGreedy partitions a massive dataset into chunks using a
 // fast lexicographic sort (which naturally groups strings with shared prefixes),
 // solves them in parallel via an inner worker pool, and recursively reduces.
@@ -54,7 +69,7 @@ func SolveHierarchicalGreedy(island []string, minOverlap, chunkSize int) string 
 	}
 	close(jobChan)
 
-	for w := 0; w < numWorkers; w++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -73,6 +88,8 @@ func SolveHierarchicalGreedy(island []string, minOverlap, chunkSize int) string 
 // distributes proportional fractions of the time budget across chunks,
 // solves each chunk with the GA solver, and recursively reduces.
 // By ensuring N never exceeds chunkSize (20000), memory stays bounded.
+//
+//nolint:gocognit // hierarchical chunking requires deep control flow
 func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallClock time.Duration, totalCores int, cfg *cli.BuildConfig, logger *GALogger) string {
 	if len(island) <= chunkSize {
 		if totalWallClock >= 10*time.Millisecond {
@@ -108,8 +125,8 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 	}
 
 	// Time budget: 60% initial pass, 15% remix pass, 25% reduce phase.
-	initialWallClock := time.Duration(float64(totalWallClock) * 0.60)
-	remixWallClock := time.Duration(float64(totalWallClock) * 0.15)
+	initialWallClock := time.Duration(float64(totalWallClock) * initialBudgetFraction)
+	remixWallClock := time.Duration(float64(totalWallClock) * remixBudgetFraction)
 
 	rounds := float64(len(chunks)) / float64(totalCores)
 	if rounds < 1 {
@@ -133,7 +150,7 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 	}
 	close(jobChan)
 
-	for w := 0; w < activeWorkers; w++ {
+	for range activeWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -154,7 +171,7 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 
 	// --- Chunk Remixing ---
 	// Evaluate compression ratio per chunk and remix underperformers.
-	if len(chunks) >= 3 {
+	if len(chunks) >= 3 { //nolint:nestif // chunk remixing is inherently multi-step
 		type crEntry struct {
 			idx int
 			cr  float64
@@ -178,13 +195,13 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 		})
 
 		// Worst 20%, but only those with CR > 0.85.
-		maxBad := len(entries) / 5
+		maxBad := len(entries) / worstChunkDivisor
 		if maxBad < 1 {
 			maxBad = 1
 		}
 		var badIdxs []int
 		for i := 0; i < maxBad && i < len(entries); i++ {
-			if entries[i].cr > 0.85 {
+			if entries[i].cr > compressionRatioThreshold {
 				badIdxs = append(badIdxs, entries[i].idx)
 			}
 		}
@@ -233,7 +250,7 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 			}
 
 			var remixWg sync.WaitGroup
-			for w := 0; w < remixWorkers; w++ {
+			for range remixWorkers {
 				remixWg.Add(1)
 				go func() {
 					defer remixWg.Done()
@@ -275,15 +292,16 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 						keptResults = append(keptResults, r)
 					}
 				}
-				results = append(keptResults, remixResults...)
+				keptResults = append(keptResults, remixResults...)
+				results = keptResults
 			}
 		}
 	}
 
 	elapsed := time.Since(start)
 	nextWallClock := totalWallClock - elapsed
-	if nextWallClock < 10*time.Millisecond {
-		nextWallClock = 10 * time.Millisecond
+	if nextWallClock < minBudgetMillis*time.Millisecond {
+		nextWallClock = minBudgetMillis * time.Millisecond
 	}
 
 	return SolveHierarchicalGA(results, minOverlap, chunkSize, nextWallClock, totalCores, cfg, logger)
@@ -295,6 +313,8 @@ func SolveHierarchicalGA(island []string, minOverlap, chunkSize int, totalWallCl
 // If cfg.GATime > 0, eligible large islands are routed to the GA solver
 // via SolveHierarchicalGA, which chunks them into safe 20000-element blocks.
 // Jobs are sorted descending by island size to prevent tail stalling.
+//
+//nolint:gocognit // concurrent worker pool with dynamic budget allocation
 func AssembleConcurrently(islands [][]string, cfg *cli.BuildConfig) []string {
 	n := len(islands)
 	if n == 0 {
@@ -325,15 +345,16 @@ func AssembleConcurrently(islands [][]string, cfg *cli.BuildConfig) []string {
 	gaLogger := NewGALogger(&printMu, cfg.Verbose)
 
 	// Spin up workers.
-	for w := 0; w < numWorkers; w++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for idx := range jobs {
 				island := islands[idx]
-				if len(island) <= cfg.DPLimit {
+				switch {
+				case len(island) <= cfg.DPLimit:
 					results[idx] = SolveExactDP(island, cfg.MinOverlap)
-				} else if budgets != nil && budgets[idx] >= 10*time.Millisecond {
+				case budgets != nil && budgets[idx] >= 10*time.Millisecond:
 					wallClock := cfg.GATime
 					if wallClock <= 0 || budgets[idx] < wallClock {
 						wallClock = budgets[idx]
@@ -358,13 +379,13 @@ func AssembleConcurrently(islands [][]string, cfg *cli.BuildConfig) []string {
 						printMu.Unlock()
 					}
 					// Divert massive workloads into partitioned fraction-budgeted recursive chunking.
-					results[idx] = SolveHierarchicalGA(island, cfg.MinOverlap, 20000, wallClock, cores, cfg, gaLogger)
-				} else {
+					results[idx] = SolveHierarchicalGA(island, cfg.MinOverlap, defaultChunkSize, wallClock, cores, cfg, gaLogger)
+				default:
 					// Route giant islands into hierarchical sort+slice chunker.
-					results[idx] = SolveHierarchicalGreedy(island, cfg.MinOverlap, 20000)
+					results[idx] = SolveHierarchicalGreedy(island, cfg.MinOverlap, defaultChunkSize)
 				}
 				if cfg.Verbose {
-					c := atomic.AddInt32(&completedStrings, int32(len(island)))
+					c := atomic.AddInt32(&completedStrings, int32(len(island))) //nolint:gosec // G115: bounded
 					printMu.Lock()
 					fmt.Printf("\r\033[K  Assembling... %d/%d strings (%d%%)",
 						c, totalStrings, int(c)*100/totalStrings)
@@ -377,7 +398,7 @@ func AssembleConcurrently(islands [][]string, cfg *cli.BuildConfig) []string {
 	// Sort jobs descending by island size to prevent tail stalling.
 	type jobDesc struct{ idx, size int }
 	jobList := make([]jobDesc, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		jobList[i] = jobDesc{idx: i, size: len(islands[i])}
 	}
 	sort.Slice(jobList, func(i, j int) bool {

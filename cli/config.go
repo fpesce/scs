@@ -84,7 +84,8 @@ func parseBuild(args []string) (*BuildConfig, error) {
 	fs.StringVar(&cfg.OutputPath, "output", "", "Path to the output file")
 	fs.IntVar(&cfg.MinOverlap, "k", 3, "Minimum meaningful overlap threshold")
 	fs.IntVar(&cfg.MinOverlap, "min-overlap", 3, "Minimum meaningful overlap threshold")
-	fs.IntVar(&cfg.DPLimit, "dp-limit", 15, "Exact DP threshold for assembly")
+	const defaultDPLimit = 15 // Maximum island size for exact bitmask DP.
+	fs.IntVar(&cfg.DPLimit, "dp-limit", defaultDPLimit, "Exact DP threshold for assembly")
 	fs.BoolVar(&cfg.Unordered, "unordered", false, "Build in UNORDERED (dictionary) mode")
 	fs.StringVar(&cfg.Separator, "sep", "\n", "Separator character for cat output")
 	fs.BoolVar(&cfg.Verbose, "v", false, "Enable verbose progress updates")

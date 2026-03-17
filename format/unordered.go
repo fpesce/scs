@@ -44,14 +44,14 @@ func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) ([]byte, []
 		})
 
 		// Write ULEB128(Word_Length) and ULEB128(Total_Words_In_Group).
-		buf.Write(EncodeULEB128(uint64(wordLen)))
+		buf.Write(EncodeULEB128(uint64(wordLen))) //nolint:gosec // G115: positive length
 		buf.Write(EncodeULEB128(uint64(len(pairs))))
 
 		// Write delta-encoded offsets and track word sequence.
 		prev := 0
 		for _, p := range pairs {
 			delta := p.offset - prev
-			buf.Write(EncodeULEB128(uint64(delta)))
+			buf.Write(EncodeULEB128(uint64(delta))) //nolint:gosec // G115: positive delta
 			prev = p.offset
 			orderedWords = append(orderedWords, p.word)
 		}

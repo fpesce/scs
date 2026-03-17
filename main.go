@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,18 +30,35 @@ func run(args []string) error {
 
 	switch cmd {
 	case "build":
-		return runBuild(cfg.(*cli.BuildConfig))
+		bCfg, ok := cfg.(*cli.BuildConfig)
+		if !ok {
+			return errors.New("internal: invalid config type for build")
+		}
+		return runBuild(bCfg)
 	case "merge":
-		return runMerge(cfg.(*cli.MergeConfig))
+		mCfg, ok := cfg.(*cli.MergeConfig)
+		if !ok {
+			return errors.New("internal: invalid config type for merge")
+		}
+		return runMerge(mCfg)
 	case "cat":
-		return runCat(cfg.(*cli.CatConfig))
+		cCfg, ok := cfg.(*cli.CatConfig)
+		if !ok {
+			return errors.New("internal: invalid config type for cat")
+		}
+		return runCat(cCfg)
 	case "search":
-		return runSearch(cfg.(*cli.SearchConfig))
+		sCfg, ok := cfg.(*cli.SearchConfig)
+		if !ok {
+			return errors.New("internal: invalid config type for search")
+		}
+		return runSearch(sCfg)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
 }
 
+//nolint:gocognit // CLI entry point orchestrating the full build pipeline
 func runBuild(cfg *cli.BuildConfig) error {
 	// Optional CPU profiling.
 	if cfg.Profile {
@@ -164,7 +182,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 	}
 
 	// Calculate precise byte offset: 12 header bytes + len(superstring).
-	footerOffset := uint64(12 + len(masterString))
+	footerOffset := uint64(format.HeaderSize + len(masterString)) //nolint:gosec // G115: always positive
 
 	// Determine separator byte.
 	sepByte := byte('\n')
@@ -174,7 +192,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 
 	// Generate the raw 12-byte header.
 	headerBytes := format.EncodeHeader(&format.Header{
-		Version:      0x02,
+		Version:      format.VersionCurrent,
 		Separator:    sepByte,
 		IsOrdered:    !cfg.Unordered,
 		FooterOffset: footerOffset,
@@ -203,7 +221,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 	}
 
 	// --- Tiktoken sidecars: .rank and .json ---
-	if cfg.Tiktoken && rankMap != nil {
+	if cfg.Tiktoken && rankMap != nil { //nolint:nestif // sidecar generation is necessarily multi-step
 		basePath := strings.TrimSuffix(cfg.OutputPath, filepath.Ext(cfg.OutputPath))
 
 		rankPath := basePath + ".rank"
@@ -228,6 +246,7 @@ func runBuild(cfg *cli.BuildConfig) error {
 	return nil
 }
 
+//nolint:gocognit // CLI entry point orchestrating the merge pipeline
 func runMerge(cfg *cli.MergeConfig) error {
 	// Decode both files.
 	header1, superstring1, words1, err := format.DecodeSCS(cfg.PrimaryPath)
@@ -252,13 +271,15 @@ func runMerge(cfg *cli.MergeConfig) error {
 	survivors, eliminatedMap := pipeline.MergeEliminateSubstrings(superstring1, updateWordStrings)
 
 	// Step 2: Generate mini-superstring from survivors and calculate overlap.
-	miniSuper, fragment, overlapLength := pipeline.TruncateAndAppend(superstring1, survivors, 3, 15)
+	const mergeMinOverlap = 3 // Minimum overlap for merge mode.
+	const mergeDPLimit = 15   // DP threshold for merge mode.
+	miniSuper, fragment, overlapLength := pipeline.TruncateAndAppend(superstring1, survivors, mergeMinOverlap, mergeDPLimit)
 
 	// Step 3: Build the combined superstring.
 	combinedPayload := superstring1 + fragment
 
 	// Step 4: Build the combined word list with correct offsets.
-	var allWords []format.Word
+	allWords := make([]format.Word, 0, len(words1)+len(survivors))
 	allWords = append(allWords, words1...)
 
 	// Add eliminated words (remapped to primary's address space).
@@ -331,9 +352,9 @@ func runMerge(cfg *cli.MergeConfig) error {
 	}
 
 	// Step 7: Calculate footer offset and build header.
-	footerOffset := uint64(12 + len(combinedPayload))
+	footerOffset := uint64(format.HeaderSize + len(combinedPayload)) //nolint:gosec // G115: always positive
 	mergedHeader := format.EncodeHeader(&format.Header{
-		Version:      0x02,
+		Version:      format.VersionCurrent,
 		Separator:    header1.Separator,
 		IsOrdered:    isOrdered,
 		FooterOffset: footerOffset,
@@ -393,8 +414,8 @@ func runSearch(cfg *cli.SearchConfig) error {
 		return fmt.Errorf("reading %q: %w", cfg.FilePath, err)
 	}
 
-	if len(data) < 12 {
-		return fmt.Errorf("invalid .scs file: missing header")
+	if len(data) < format.HeaderSize {
+		return errors.New("invalid .scs file: missing header")
 	}
 
 	header, err := format.DecodeHeader(data[:12])
@@ -403,7 +424,7 @@ func runSearch(cfg *cli.SearchConfig) error {
 	}
 
 	if header.FooterOffset > uint64(len(data)) || header.FooterOffset < 12 {
-		return fmt.Errorf("corrupt file: footer offset out of bounds")
+		return errors.New("corrupt file: footer offset out of bounds")
 	}
 
 	// Instant O(1) bounds extraction.

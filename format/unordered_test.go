@@ -99,8 +99,8 @@ func TestEncodeUnordered_Deterministic(t *testing.T) {
 	}
 
 	// Run 10 times, assert identical output.
-	var results [][]byte
-	for i := 0; i < 10; i++ {
+	results := make([][]byte, 0, 10)
+	for range 10 {
 		raw, _ := EncodeUnordered(words, offsets)
 		results = append(results, raw)
 	}
@@ -139,11 +139,11 @@ func TestEncodeUnordered_OrderedWords(t *testing.T) {
 	// Words with scrambled offsets to verify ordering.
 	words := []string{"aa", "bb", "cc", "xxx", "yyy"}
 	offsets := map[string]int{
-		"bb":  2,   // len=2, offset=2
-		"aa":  0,   // len=2, offset=0
-		"cc":  8,   // len=2, offset=8
-		"yyy": 20,  // len=3, offset=20
-		"xxx": 10,  // len=3, offset=10
+		"bb":  2,  // len=2, offset=2
+		"aa":  0,  // len=2, offset=0
+		"cc":  8,  // len=2, offset=8
+		"yyy": 20, // len=3, offset=20
+		"xxx": 10, // len=3, offset=10
 	}
 
 	_, orderedWords := EncodeUnordered(words, offsets)

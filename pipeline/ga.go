@@ -13,6 +13,23 @@ import (
 	"github.com/joke/scs/graph"
 )
 
+const (
+	// mutationRate is 1/N chance per offspring: 1 in 10 gets mutated.
+	mutationRate = 10
+	// stagnationFloor is the minimum stagnation limit for small islands.
+	stagnationFloor = 10000
+	// seedSpacing separates per-worker PRNG seeds to avoid correlation.
+	seedSpacing = 1e9
+	// eliteMutatePercent is the percentage of initial population seeded from greedy elite.
+	eliteMutatePercent = 80
+	// minPopSize is the minimum GA population size.
+	minPopSize = 50
+	// maxPopSize is the maximum GA population size.
+	maxPopSize = 500
+	// percentDivisor converts a percentage to a fraction.
+	percentDivisor = 100
+)
+
 // Chromosome represents a single individual in the GA population.
 // path is a permutation of indices into the island slice.
 // fitness is the total suffix-prefix overlap score.
@@ -38,7 +55,7 @@ func newLazyCache(island []string) *lazyCache {
 // get returns the overlap between island[leftID] and island[rightID],
 // computing and caching it on first access (JIT).
 func (c *lazyCache) get(leftID, rightID int) int {
-	key := (uint64(leftID) << 32) | uint64(rightID)
+	key := (uint64(leftID) << 32) | uint64(rightID) //nolint:gosec // G115: IDs are positive indices
 	if v, ok := c.cache[key]; ok {
 		return v
 	}
@@ -52,7 +69,7 @@ func (c *lazyCache) get(leftID, rightID int) int {
 // If a deadline is set, evaluation stops early when time expires.
 func evaluateFitness(path []int, cache *lazyCache, deadline time.Time) int {
 	total := 0
-	for i := 0; i < len(path)-1; i++ {
+	for i := range len(path) - 1 {
 		if i&127 == 0 && !deadline.IsZero() && time.Now().After(deadline) {
 			break
 		}
@@ -129,7 +146,7 @@ func crossoverSCX(offspring, parentA, parentB []int, cache *lazyCache, visited [
 	n := len(parentA)
 
 	// Clear visited array.
-	for i := 0; i < n; i++ {
+	for i := range n {
 		visited[i] = false
 	}
 
@@ -180,11 +197,12 @@ func crossoverSCX(offspring, parentA, parentB []int, cache *lazyCache, visited [
 			// Both available — pick higher overlap.
 			ovA := cache.get(current, candA)
 			ovB := cache.get(current, candB)
-			if ovA > ovB {
+			switch {
+			case ovA > ovB:
 				next = candA
-			} else if ovB > ovA {
+			case ovB > ovA:
 				next = candB
-			} else {
+			default:
 				// Tied — pick randomly.
 				if rng.Intn(2) == 0 {
 					next = candA
@@ -204,7 +222,7 @@ func crossoverSCX(offspring, parentA, parentB []int, cache *lazyCache, visited [
 // Uses random probing first for speed, then falls back to linear scan.
 func randomUnvisited(visited []bool, n int, rng *rand.Rand) int {
 	// Fast path: try a few random probes.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		idx := rng.Intn(n)
 		if !visited[idx] {
 			return idx
@@ -217,7 +235,7 @@ func randomUnvisited(visited []bool, n int, rng *rand.Rand) int {
 			return i
 		}
 	}
-	for i := 0; i < start; i++ {
+	for i := range start {
 		if !visited[i] {
 			return i
 		}
@@ -242,7 +260,7 @@ func initPopulation(popSize int, island []string, greedyPath []int, cache *lazyC
 	pop = append(pop, c0)
 
 	// ~80% mutated clones of elite.
-	eliteEnd := 1 + (popSize-1)*80/100
+	eliteEnd := 1 + (popSize-1)*eliteMutatePercent/percentDivisor
 	for i := 1; i < eliteEnd && i < popSize; i++ {
 		if !deadline.IsZero() && time.Now().After(deadline) {
 			return pop
@@ -251,7 +269,7 @@ func initPopulation(popSize int, island []string, greedyPath []int, cache *lazyC
 		copy(c.path, pop[0].path)
 		// Apply 1-3 random mutations.
 		numMutations := 1 + rng.Intn(3)
-		for m := 0; m < numMutations; m++ {
+		for range numMutations {
 			switch rng.Intn(3) {
 			case 0:
 				mutateSwap(c.path, rng)
@@ -309,6 +327,8 @@ func tournamentSelect(pop []Chromosome, tourneySize int, rng *rand.Rand) int {
 // SolveHierarchicalGA guarantees N <= 20000, so memory is bounded.
 // concurrency controls the number of independent island-model populations.
 // logger may be nil to suppress all GA telemetry output.
+//
+//nolint:gocognit,nonamedreturns // GA island-model solver; named return needed for defer/recover
 func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurrency int, cfg *cli.BuildConfig, logger *GALogger) (result string) {
 	n := len(island)
 	if n <= 1 {
@@ -336,7 +356,7 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 	// Dynamic hyperparameters: use CLI overrides or scale from N.
 	popSize := cfg.GAPop
 	if popSize <= 0 {
-		popSize = clamp(n/10, 50, 500)
+		popSize = clamp(n/mutationRate, minPopSize, maxPopSize)
 	}
 	tourneySize := cfg.GATourney
 	if tourneySize <= 0 {
@@ -345,8 +365,8 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 	stagnationLimit := cfg.GAStag
 	if stagnationLimit <= 0 {
 		stagnationLimit = n * 2
-		if stagnationLimit < 10000 {
-			stagnationLimit = 10000 // Give small islands enough time to converge.
+		if stagnationLimit < stagnationFloor {
+			stagnationLimit = stagnationFloor // Give small islands enough time to converge.
 		}
 	}
 	if concurrency < 1 {
@@ -372,7 +392,7 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 	resChan := make(chan gaResult, concurrency)
 	var wg sync.WaitGroup
 
-	for w := 0; w < concurrency; w++ {
+	for w := range concurrency {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
@@ -381,8 +401,8 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 			}()
 
 			// Unique PRNG seed per worker to explore different genetic paths.
-			seed := time.Now().UnixNano() + int64(workerID)*1e9
-			rng := rand.New(rand.NewSource(seed))
+			seed := time.Now().UnixNano() + int64(workerID)*seedSpacing
+			rng := rand.New(rand.NewSource(seed)) //nolint:gosec // G404: GA needs fast PRNG, not crypto
 
 			cache := newLazyCache(island)
 			pop := initPopulation(popSize, island, greedyPath, cache, rng, deadline)
@@ -465,7 +485,7 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 
 				crossoverSCX(offspringPath, pop[idxA].path, pop[idxB].path, cache, visited, rng, posA, posB)
 
-				if rng.Intn(10) == 0 {
+				if rng.Intn(mutationRate) == 0 {
 					switch rng.Intn(2) {
 					case 0:
 						mutateSwap(offspringPath, rng)
@@ -533,14 +553,14 @@ func SolveGA(island []string, minOverlap int, wallClock time.Duration, concurren
 
 	var builder strings.Builder
 	totalLen := len(island[bestPath[0]])
-	for i := 0; i < n-1; i++ {
+	for i := range n - 1 {
 		ov := cache.get(bestPath[i], bestPath[i+1])
 		totalLen += len(island[bestPath[i+1]]) - ov
 	}
 	builder.Grow(totalLen)
 
 	builder.WriteString(island[bestPath[0]])
-	for i := 0; i < n-1; i++ {
+	for i := range n - 1 {
 		ov := cache.get(bestPath[i], bestPath[i+1])
 		builder.WriteString(island[bestPath[i+1]][ov:])
 	}

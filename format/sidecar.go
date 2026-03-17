@@ -7,13 +7,16 @@ import (
 	"os"
 )
 
+// RankBytesPerEntry is the byte width of each LE uint32 rank in the .rank sidecar.
+const RankBytesPerEntry = 4
+
 // WriteRankSidecar writes the .rank binary sidecar file.
 // It iterates over orderedWords (in footer delta-encoded order),
 // looks up each word's rank from rankMap, and packs them as
 // sequential Little-Endian uint32 values.
 func WriteRankSidecar(filepath string, orderedWords []string, rankMap map[string]uint32) error {
 	var buf bytes.Buffer
-	buf.Grow(len(orderedWords) * 4)
+	buf.Grow(len(orderedWords) * RankBytesPerEntry)
 
 	for i, word := range orderedWords {
 		rank, ok := rankMap[word]
@@ -25,7 +28,7 @@ func WriteRankSidecar(filepath string, orderedWords []string, rankMap map[string
 		}
 	}
 
-	if err := os.WriteFile(filepath, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(filepath, buf.Bytes(), FilePermissions); err != nil {
 		return fmt.Errorf("writing rank sidecar %q: %w", filepath, err)
 	}
 	return nil
@@ -37,7 +40,7 @@ func WriteMetadataSidecar(outPath string, inPath string) error {
 	if err != nil {
 		return fmt.Errorf("reading metadata %q: %w", inPath, err)
 	}
-	if err := os.WriteFile(outPath, data, 0o644); err != nil {
+	if err := os.WriteFile(outPath, data, FilePermissions); err != nil {
 		return fmt.Errorf("writing metadata %q: %w", outPath, err)
 	}
 	return nil

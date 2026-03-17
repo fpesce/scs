@@ -14,6 +14,8 @@ import (
 //
 // Uses a sorted index + binary search for O(log N) candidate lookup instead of
 // O(N) prefix hash collisions. Parallelized across CPU cores via lock-free DSU.
+//
+//nolint:gocognit // parallel graph decomposition with DSU
 func ShatterGraph(survivors []string, minOverlap int) [][]string {
 	if minOverlap <= 0 {
 		minOverlap = 1
@@ -55,7 +57,7 @@ func ShatterGraph(survivors []string, minOverlap int) [][]string {
 	var wg sync.WaitGroup
 
 	// 2. Distribute overlap checks across all CPU cores.
-	for w := 0; w < numWorkers; w++ {
+	for w := range numWorkers {
 		start := w * chunkSize
 		if start >= len(longIndices) {
 			break
@@ -104,18 +106,18 @@ func ShatterGraph(survivors []string, minOverlap int) [][]string {
 	// 3. Zero-allocation island grouping via linked list arrays.
 	head := make([]int, n)
 	next := make([]int, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		head[i] = -1
 	}
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		root := dsu.Find(i)
 		next[i] = head[root]
 		head[root] = i
 	}
 
 	var islands [][]string
-	for root := 0; root < n; root++ {
+	for root := range n {
 		if head[root] != -1 {
 			count := 0
 			for curr := head[root]; curr != -1; curr = next[curr] {

@@ -13,6 +13,9 @@ import (
 // a maliciously crafted or corrupt stream (DoS protection).
 const maxULEB128Bytes = 10
 
+// uleb128LowMask extracts the 7 data bits from each ULEB128 byte.
+const uleb128LowMask = 0x7F
+
 // EncodeULEB128 encodes a uint64 value into ULEB128 (Little-Endian Base 128) format.
 func EncodeULEB128(value uint64) []byte {
 	if value == 0 {
@@ -20,7 +23,7 @@ func EncodeULEB128(value uint64) []byte {
 	}
 	var buf []byte
 	for value > 0 {
-		b := byte(value & 0x7F)
+		b := byte(value & uleb128LowMask)
 		value >>= 7
 		if value > 0 {
 			b |= 0x80 // Set continuation bit.
@@ -36,12 +39,12 @@ func EncodeULEB128(value uint64) []byte {
 func DecodeULEB128(r io.ByteReader) (uint64, int, error) {
 	var result uint64
 	var shift uint
-	for i := 0; i < maxULEB128Bytes; i++ {
+	for i := range maxULEB128Bytes {
 		b, err := r.ReadByte()
 		if err != nil {
 			return 0, i, fmt.Errorf("reading ULEB128 byte %d: %w", i, err)
 		}
-		result |= uint64(b&0x7F) << shift
+		result |= uint64(b&uleb128LowMask) << shift
 		if b&0x80 == 0 {
 			return result, i + 1, nil
 		}

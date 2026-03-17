@@ -47,7 +47,7 @@ func TestOverlapHeap_EqualOverlaps(t *testing.T) {
 	h.PushNode(OverlapNode{LeftID: 4, RightID: 5, OverlapLen: 3})
 
 	// All should pop with overlap 3 (order is non-deterministic).
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		got := h.PopNode()
 		if got.OverlapLen != 3 {
 			t.Errorf("pop %d: OverlapLen = %d, want 3", i, got.OverlapLen)

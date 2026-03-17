@@ -37,7 +37,7 @@ func SolveGreedyHeapWithDeadline(island []string, minOverlap int, deadline time.
 
 	// Pre-calculate exact builder capacity for zero-realloc final assembly.
 	totalLen := len(island[path[0]])
-	for i := 0; i < len(path)-1; i++ {
+	for i := range len(path) - 1 {
 		totalLen += len(island[path[i+1]]) - overlaps[i]
 	}
 
@@ -45,7 +45,7 @@ func SolveGreedyHeapWithDeadline(island []string, minOverlap int, deadline time.
 	result.Grow(totalLen)
 
 	result.WriteString(island[path[0]])
-	for i := 0; i < len(path)-1; i++ {
+	for i := range len(path) - 1 {
 		ov := overlaps[i]
 		result.WriteString(island[path[i+1]][ov:])
 	}
@@ -63,6 +63,8 @@ func solveGreedyPath(island []string, minOverlap int) ([]int, []int) {
 // solveGreedyPathWithDeadline is like solveGreedyPath but respects a deadline.
 // When the deadline expires, it stops matching and builds the path from
 // whatever chains have been assembled so far.
+//
+//nolint:gocognit // greedy heap with deadline-aware path assembly
 func solveGreedyPathWithDeadline(island []string, minOverlap int, deadline time.Time) ([]int, []int) {
 	if minOverlap <= 0 {
 		minOverlap = 1
@@ -87,7 +89,7 @@ func solveGreedyPathWithDeadline(island []string, minOverlap int, deadline time.
 	next := make([]int, n)
 	prev := make([]int, n)
 	nextOverlap := make([]int, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		next[i] = -1
 		prev[i] = -1
 	}
@@ -124,7 +126,7 @@ func solveGreedyPathWithDeadline(island []string, minOverlap int, deadline time.
 		}
 
 		// For each available u (next[u]==-1), check if its suffix matches.
-		for u := 0; u < n; u++ {
+		for u := range n {
 			// Throttle syscall checks with bitwise mask.
 			if !deadline.IsZero() && u&4095 == 0 && time.Now().After(deadline) {
 				goto buildPath
@@ -169,7 +171,7 @@ buildPath:
 	// When multiple chains exist, insert overlap=0 at chain boundaries.
 	path := make([]int, 0, n)
 	overlaps := make([]int, 0, n-1)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if prev[i] == -1 {
 			// Insert zero-overlap boundary between chains.
 			if len(path) > 0 {

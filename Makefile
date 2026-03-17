@@ -40,4 +40,4 @@ e2etest:
 	done
 
 prod:
-	GA_TIME=$(or $(GA_TIME),24h) bash scripts/prod.sh
+	GA_TIME=$(or $(GA_TIME),2h) bash scripts/prod.sh

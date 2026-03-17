@@ -7,6 +7,8 @@ repomix.config.json
 # artefact
 *.scs
 scs
+proddata
+prodout
 
 # vibecode artefacts
 algo_pseudocode.txt

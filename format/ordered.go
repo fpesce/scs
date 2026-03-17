@@ -41,7 +41,7 @@ func EncodeOrdered(chronologicalLines []string, offsetMap map[string]int, supers
 
 	// Calculate dynamic bit widths.
 	lengthBits := bitsNeeded(maxWordLen)
-	offsetBits := bitsNeeded(uint64(superstringByteLen))
+	offsetBits := bitsNeeded(uint64(superstringByteLen)) //nolint:gosec // G115: positive int
 
 	// Handle edge case: if superstringByteLen is 0,
 	// we need at least 1 bit for the offset field.
@@ -64,7 +64,7 @@ func EncodeOrdered(chronologicalLines []string, offsetMap map[string]int, supers
 				offset = 0
 			}
 			bw.WriteBits(lineLen, lengthBits)
-			bw.WriteBits(uint64(offset), offsetBits)
+			bw.WriteBits(uint64(offset), offsetBits) //nolint:gosec // G115: positive offset
 		}
 	}
 
@@ -121,7 +121,7 @@ func DecodeOrderedWithContext(data []byte, superstringByteLen int) ([][2]int, er
 	}
 
 	lengthBits := bitsNeeded(maxWordLen)
-	offsetBits := bitsNeeded(uint64(superstringByteLen))
+	offsetBits := bitsNeeded(uint64(superstringByteLen)) //nolint:gosec // G115: positive int
 	if offsetBits == 0 {
 		offsetBits = 1
 	}
@@ -132,10 +132,10 @@ func DecodeOrderedWithContext(data []byte, superstringByteLen int) ([][2]int, er
 	br := NewBitReader(remaining)
 
 	tuples := make([][2]int, 0, totalLineCount)
-	for i := uint64(0); i < totalLineCount; i++ {
+	for range totalLineCount {
 		length := br.ReadBits(lengthBits)
 		offset := br.ReadBits(offsetBits)
-		tuples = append(tuples, [2]int{int(offset), int(length)})
+		tuples = append(tuples, [2]int{int(offset), int(length)}) //nolint:gosec // G115: bounded by bit width
 	}
 
 	// Validate we didn't overflow. Actual bounds check is in decoder.

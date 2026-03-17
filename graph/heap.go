@@ -11,7 +11,7 @@ type OverlapNode struct {
 
 // OverlapHeap implements a max-heap of OverlapNode via container/heap.
 // Tie-breaking is non-deterministic (natural pop order).
-type OverlapHeap []OverlapNode
+type OverlapHeap []OverlapNode //nolint:recvcheck // heap.Interface requires mixed receivers (value for sort, pointer for Push/Pop)
 
 func (h OverlapHeap) Len() int           { return len(h) }
 func (h OverlapHeap) Less(i, j int) bool { return h[i].OverlapLen > h[j].OverlapLen }
@@ -19,7 +19,11 @@ func (h OverlapHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 // Push adds an element to the heap.
 func (h *OverlapHeap) Push(x any) {
-	*h = append(*h, x.(OverlapNode))
+	node, ok := x.(OverlapNode)
+	if !ok {
+		panic("OverlapHeap.Push: unexpected type")
+	}
+	*h = append(*h, node)
 }
 
 // Pop removes and returns the maximum element.
@@ -38,5 +42,9 @@ func (h *OverlapHeap) PushNode(node OverlapNode) {
 
 // PopNode is a typed convenience wrapper around heap.Pop.
 func (h *OverlapHeap) PopNode() OverlapNode {
-	return heap.Pop(h).(OverlapNode)
+	v, ok := heap.Pop(h).(OverlapNode)
+	if !ok {
+		panic("OverlapHeap.PopNode: unexpected type")
+	}
+	return v
 }

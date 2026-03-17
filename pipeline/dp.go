@@ -20,9 +20,9 @@ func SolveExactDP(island []string, minOverlap int) string {
 
 	// Precompute the N×N overlap matrix using KMP.
 	overlap := make([][]int, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		overlap[i] = make([]int, n)
-		for j := 0; j < n; j++ {
+		for j := range n {
 			if i != j {
 				overlap[i][j] = graph.CalculateMaxOverlap(island[i], island[j])
 			}
@@ -38,24 +38,24 @@ func SolveExactDP(island []string, minOverlap int) string {
 	for mask := 0; mask <= fullMask; mask++ {
 		dp[mask] = make([]int, n)
 		parent[mask] = make([]int, n)
-		for j := 0; j < n; j++ {
+		for j := range n {
 			dp[mask][j] = -1
 			parent[mask][j] = -1
 		}
 	}
 
 	// Base cases: start with each individual string.
-	for i := 0; i < n; i++ {
+	for i := range n {
 		dp[1<<i][i] = 0
 	}
 
 	// Fill DP: try extending every state by adding one more string.
 	for mask := 1; mask <= fullMask; mask++ {
-		for last := 0; last < n; last++ {
+		for last := range n {
 			if dp[mask][last] < 0 {
 				continue
 			}
-			for next := 0; next < n; next++ {
+			for next := range n {
 				if mask&(1<<next) != 0 {
 					continue
 				}
@@ -72,7 +72,7 @@ func SolveExactDP(island []string, minOverlap int) string {
 	// Find the best ending string in the full mask.
 	bestLast := 0
 	bestOverlap := math.MinInt
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if dp[fullMask][i] > bestOverlap {
 			bestOverlap = dp[fullMask][i]
 			bestLast = i

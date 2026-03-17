@@ -64,7 +64,7 @@ func TestDecodeULEB128_MaxUint64(t *testing.T) {
 func TestDecodeULEB128_DoSOverflow(t *testing.T) {
 	// Create a byte sequence that keeps the continuation bit set for 11 bytes.
 	malicious := make([]byte, 11)
-	for i := 0; i < 11; i++ {
+	for i := range 11 {
 		malicious[i] = 0x80 // All continuation bits set, no termination.
 	}
 

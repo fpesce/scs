@@ -13,7 +13,7 @@ func TestDSU_InitialState(t *testing.T) {
 	}
 
 	// Each element should be its own root.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if dsu.Find(i) != i {
 			t.Errorf("Find(%d) = %d, want %d", i, dsu.Find(i), i)
 		}
@@ -89,7 +89,7 @@ func TestDSU_PathCompression(t *testing.T) {
 
 	// Find on any element should resolve to the same root.
 	root := dsu.Find(5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if dsu.Find(i) != root {
 			t.Errorf("Find(%d) = %d, want %d (path compression failed)", i, dsu.Find(i), root)
 		}
@@ -99,11 +99,11 @@ func TestDSU_PathCompression(t *testing.T) {
 	// point directly to root after a single pass. Verify convergence:
 	// repeated Find calls should eventually compress all paths.
 	for range 3 {
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			dsu.Find(i)
 		}
 	}
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if dsu.Find(i) != root {
 			t.Errorf("Find(%d) = %d after convergence, want %d", i, dsu.Find(i), root)
 		}

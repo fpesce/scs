@@ -13,9 +13,9 @@ type DSU struct {
 func InstantiateDSU(capacity int) *DSU {
 	dsu := &DSU{
 		parent: make([]int32, capacity),
-		count:  int32(capacity),
+		count:  int32(capacity), //nolint:gosec // G115: bounded by slice capacity
 	}
-	for i := int32(0); i < int32(capacity); i++ {
+	for i := range int32(capacity) { //nolint:gosec // G115: same as above
 		dsu.parent[i] = i
 	}
 	return dsu
@@ -24,7 +24,7 @@ func InstantiateDSU(capacity int) *DSU {
 // Find returns the root representative of the component containing index.
 // Uses lock-free path splitting (half-path compression) via atomic CAS.
 func (dsu *DSU) Find(index int) int {
-	curr := int32(index)
+	curr := int32(index) //nolint:gosec // G115: index is valid slice index
 	for {
 		p := atomic.LoadInt32(&dsu.parent[curr])
 		if p == curr {
@@ -42,8 +42,8 @@ func (dsu *DSU) Find(index int) int {
 // Uses union-by-index (smaller root wins) to maintain deterministic structure.
 func (dsu *DSU) Union(u, v int) bool {
 	for {
-		rootU := int32(dsu.Find(u))
-		rootV := int32(dsu.Find(v))
+		rootU := int32(dsu.Find(u)) //nolint:gosec // G115: Find returns valid index
+		rootV := int32(dsu.Find(v)) //nolint:gosec // G115: Find returns valid index
 		if rootU == rootV {
 			return false
 		}

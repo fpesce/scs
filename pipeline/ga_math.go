@@ -42,4 +42,3 @@ func calculateIslandBudgets(globalTime time.Duration, numWorkers int, islands []
 
 	return budgets
 }
-

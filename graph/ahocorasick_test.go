@@ -97,7 +97,7 @@ func TestAhoCorasick_MatchPositions(t *testing.T) {
 	matches := ac.Search("banana")
 
 	// "ana" appears at positions 1 and 3 in "banana"
-	var starts []int
+	starts := make([]int, 0, len(matches))
 	for _, m := range matches {
 		starts = append(starts, m.Start)
 	}

@@ -15,8 +15,8 @@ import (
 // concurrently checks which updateWords exist within it. Words found inside
 // the primary payload are "eliminated" (remapped to primary's address space).
 // Returns survivors (words not found) and a map of eliminated words to their offsets.
-func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (survivors []string, eliminatedMap map[string]int) {
-	eliminatedMap = make(map[string]int)
+func MergeEliminateSubstrings(primaryPayload string, updateWords []string) ([]string, map[string]int) {
+	eliminatedMap := make(map[string]int)
 	if len(updateWords) == 0 || len(primaryPayload) == 0 {
 		return updateWords, eliminatedMap
 	}
@@ -33,7 +33,7 @@ func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (surv
 	results := make([]workerResult, numWorkers)
 
 	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
+	for w := range numWorkers {
 		start := w * chunkSize
 		if start >= len(updateWords) {
 			break
@@ -74,7 +74,7 @@ func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (surv
 	}
 	wg.Wait()
 
-	// Recombine results sequentially.
+	var survivors []string
 	for _, res := range results {
 		if len(res.survivors) > 0 {
 			survivors = append(survivors, res.survivors...)
@@ -92,7 +92,7 @@ func MergeEliminateSubstrings(primaryPayload string, updateWords []string) (surv
 // to truncate redundant boundary characters.
 // Returns the full miniSuper (for localized offset mapping), the truncated fragment,
 // and the overlap length.
-func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dpLimit int) (miniSuper string, fragment string, overlapLength int) {
+func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dpLimit int) (string, string, int) {
 	if len(survivors) == 0 {
 		return "", "", 0
 	}
@@ -122,7 +122,7 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 		return len(superWords[i]) > len(superWords[j])
 	})
 
-	miniSuper = ""
+	miniSuper := ""
 	for _, sw := range superWords {
 		miniSuper += sw
 	}
@@ -132,10 +132,10 @@ func TruncateAndAppend(primaryPayload string, survivors []string, minOverlap, dp
 	}
 
 	// Calculate suffix-prefix overlap between primary payload and miniSuper.
-	overlapLength = graph.CalculateMaxOverlap(primaryPayload, miniSuper)
+	overlapLength := graph.CalculateMaxOverlap(primaryPayload, miniSuper)
 
 	// Truncate the overlap from the front of miniSuper.
-	fragment = miniSuper[overlapLength:]
+	fragment := miniSuper[overlapLength:]
 
 	return miniSuper, fragment, overlapLength
 }

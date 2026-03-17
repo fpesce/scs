@@ -17,7 +17,7 @@ func TestEliminateSubstrings_MemoryUsage(t *testing.T) {
 	words := make([]string, count)
 	charset := "abcdefghijklmnopqrstuvwxyz"
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		length := 3 + rng.Intn(20) // 3-22 char strings.
 		buf := make([]byte, length)
 		for j := range buf {
@@ -37,7 +37,7 @@ func TestEliminateSubstrings_MemoryUsage(t *testing.T) {
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
 
-	// Calculate memory delta.  
+	// Calculate memory delta.
 	allocatedMB := float64(after.TotalAlloc-before.TotalAlloc) / (1024 * 1024)
 
 	t.Logf("Input: %d strings", count)

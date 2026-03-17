@@ -25,7 +25,7 @@ func MapOffsets(masterString string, uniqueSourceStrings []string) map[string]in
 	chunkSize := (len(uniqueSourceStrings) + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
+	for w := range numWorkers {
 		start := w * chunkSize
 		if start >= len(uniqueSourceStrings) {
 			break

@@ -1,26 +1,99 @@
 linters:
   enable:
+    # --- Core ---
     - errcheck
     - gocritic
     - gosec
     - govet
     - misspell
     - revive
+    - stylecheck
+    - unconvert
+    - unparam
+
+    # --- Formatting (zero-friction auto-fix) ---
+    - gofumpt          # Stricter gofmt: uniform spacing and grouping.
+    - gci              # Deterministic import sorting with project prefix grouping.
+
+    # --- Security & correctness ---
+    - asciicheck       # Non-ASCII identifiers.
+    - bidichk          # Dangerous unicode sequences (trojan source).
+    - durationcheck    # Catches duration * duration bugs.
+    - errorlint        # Proper error wrapping (Go 1.13+).
+    - forcetypeassert  # Unchecked type assertions.
+    - nilerr           # Returns nil instead of the error.
+    - nilnil           # Simultaneous nil error + nil value.
+    - nilnesserr       # Checks err!=nil but returns different nil value.
+    - reassign         # Package variable reassignment.
+    - wrapcheck        # Errors from external packages must be wrapped.
+
+    # --- Algorithmic & binary guards ---
+    - mnd              # Magic numbers → named constants.
+    - gocognit         # Human-readable cognitive complexity (replaces nestif).
+    - decorder         # Enforces type → const → var → func file ordering.
+
+    # --- Code quality ---
+    - dogsled          # Too many blank identifiers.
+    - dupword          # Duplicate words in comments.
+    - errname          # Sentinel error naming (Err prefix).
+    - gocheckcompilerdirectives  # Validates //go: directives.
+    - goprintffuncname # Printf-like functions named with f.
+    - intrange         # Integer range loops (Go 1.22+).
+    - makezero         # Slice declarations with non-zero initial length.
+    - mirror           # Wrong mirror patterns (bytes/strings).
+    - nolintlint       # Validates //nolint directives.
+    - predeclared      # Shadowing predeclared identifiers.
+    - recvcheck        # Receiver type consistency.
+    - wastedassign     # Dead assignments.
+    - nonamedreturns   # Explicit returns only (replaces nakedret).
+
+    # --- Performance ---
+    - perfsprint       # Faster alternatives to fmt.Sprintf.
+    - prealloc         # Slice preallocation opportunities.
+    - usestdlibvars    # Use stdlib vars/constants.
+
+    # --- Concurrency & state protection ---
+    - gochecknoglobals # No mutable global state (protects parallel workers).
+    - gochecknoinits   # No init() functions (deterministic startup).
+
+    # --- Testing ---
+    - thelper          # Test helpers must call t.Helper().
 
 linters-settings:
   revive:
     rules:
       - name: exported
         disabled: true
-  gosec:
-    excludes:
-      - G115
-      - G306
-      - G404
-  gocritic:
-    disabled-checks:
-      - ifElseChain
-      - appendAssign
+  stylecheck:
+    checks:
+      - "all"
+      - "-ST1000"  # Package comments — not required for internal tools.
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/joke/scs)
+  gocognit:
+    min-complexity: 35  # Generous: only flags truly unreadable algorithms.
+  mnd:
+    ignored-numbers:
+      - '0'
+      - '1'
+      - '2'
+      - '3'
+      - '8'
+      - '16'
+      - '32'
+      - '64'
+      - '128'
+      - '256'
+    ignored-functions:
+      - 'make'
+      - 'cap'
+      - 'len'
 
 issues:
   exclude-dirs:

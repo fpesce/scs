@@ -10,7 +10,7 @@ type BitWriter struct {
 
 // WriteBits writes the lowest `width` bits of `value` to the buffer.
 func (bw *BitWriter) WriteBits(value uint64, width uint) {
-	for i := uint(0); i < width; i++ {
+	for i := range width {
 		byteIdx := bw.bitPos / 8
 		bitIdx := bw.bitPos % 8
 
@@ -47,7 +47,7 @@ func NewBitReader(data []byte) *BitReader {
 // ReadBits reads `width` bits from the buffer and returns them as a uint64.
 func (br *BitReader) ReadBits(width uint) uint64 {
 	var value uint64
-	for i := uint(0); i < width; i++ {
+	for i := range width {
 		byteIdx := br.bitPos / 8
 		bitIdx := br.bitPos % 8
 

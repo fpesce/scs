@@ -49,9 +49,10 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 			usedBytes[b] = true
 		}
 	}
-	delim := byte(0xFF) // sentinel
+	const defaultSentinel = 0xFF // Fallback if all byte values are used.
+	delim := byte(defaultSentinel)
 	found := false
-	for b := 0; b < 256; b++ {
+	for b := range 256 {
 		if !usedBytes[byte(b)] {
 			delim = byte(b)
 			found = true
@@ -86,7 +87,7 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 	chunkSize := (nd + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
+	for w := range numWorkers {
 		start := w * chunkSize
 		if start >= nd {
 			break

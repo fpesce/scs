@@ -21,9 +21,10 @@ type GALogger struct {
 // NewGALogger creates a GALogger. If verbose is false, all logging is suppressed.
 // mu must be the same mutex used by the progress bar in AssembleConcurrently.
 func NewGALogger(mu *sync.Mutex, verbose bool) *GALogger {
+	const logThrottleMs = 500
 	return &GALogger{
 		mu:       mu,
-		minDelay: 500 * time.Millisecond,
+		minDelay: logThrottleMs * time.Millisecond,
 		start:    time.Now(),
 		verbose:  verbose,
 	}

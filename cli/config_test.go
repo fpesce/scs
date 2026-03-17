@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+//nolint:gocognit // table-driven test with field-by-field assertions
 func TestParseSubcommand_Build(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -100,7 +101,10 @@ func TestParseSubcommand_Build(t *testing.T) {
 			if cmd != "build" {
 				t.Fatalf("cmd = %q, want %q", cmd, "build")
 			}
-			bc := cfg.(*BuildConfig)
+			bc, ok := cfg.(*BuildConfig)
+			if !ok {
+				t.Fatal("cfg is not *BuildConfig")
+			}
 			if bc.InputPath != tt.wantConfig.InputPath {
 				t.Errorf("InputPath = %q, want %q", bc.InputPath, tt.wantConfig.InputPath)
 			}
@@ -146,7 +150,10 @@ func TestParseSubcommand_Cat(t *testing.T) {
 	if cmd != "cat" {
 		t.Fatalf("cmd = %q, want %q", cmd, "cat")
 	}
-	cc := cfg.(*CatConfig)
+	cc, ok := cfg.(*CatConfig)
+	if !ok {
+		t.Fatal("cfg is not *CatConfig")
+	}
 	if cc.FilePath != "test.scs" {
 		t.Errorf("FilePath = %q, want %q", cc.FilePath, "test.scs")
 	}
@@ -160,7 +167,10 @@ func TestParseSubcommand_Search(t *testing.T) {
 	if cmd != "search" {
 		t.Fatalf("cmd = %q, want %q", cmd, "search")
 	}
-	sc := cfg.(*SearchConfig)
+	sc, ok := cfg.(*SearchConfig)
+	if !ok {
+		t.Fatal("cfg is not *SearchConfig")
+	}
 	if sc.Word != "hello" {
 		t.Errorf("Word = %q, want %q", sc.Word, "hello")
 	}
@@ -177,7 +187,10 @@ func TestParseSubcommand_Merge(t *testing.T) {
 	if cmd != "merge" {
 		t.Fatalf("cmd = %q, want %q", cmd, "merge")
 	}
-	mc := cfg.(*MergeConfig)
+	mc, ok := cfg.(*MergeConfig)
+	if !ok {
+		t.Fatal("cfg is not *MergeConfig")
+	}
 	if mc.PrimaryPath != "a.scs" {
 		t.Errorf("PrimaryPath = %q, want %q", mc.PrimaryPath, "a.scs")
 	}

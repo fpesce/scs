@@ -46,7 +46,7 @@ func InitializeAutomaton(prealloc int) *AhoCorasick {
 func (ac *AhoCorasick) InsertPattern(pattern string, patternID int) {
 	currentState := 0
 
-	for i := 0; i < len(pattern); i++ {
+	for i := range len(pattern) {
 		charIdx := pattern[i]
 
 		if ac.nodes[currentState].child[charIdx] == 0 {
@@ -67,7 +67,7 @@ func (ac *AhoCorasick) ComputeFailureLinks() {
 	queue := make([]int, 0)
 
 	// Depth-1 states intrinsically fail back to the root.
-	for c := 0; c < AlphabetCapacity; c++ {
+	for c := range AlphabetCapacity {
 		childIdx := ac.nodes[0].child[c]
 		if childIdx != 0 {
 			ac.nodes[childIdx].fail = 0
@@ -80,7 +80,7 @@ func (ac *AhoCorasick) ComputeFailureLinks() {
 		currentState := queue[0]
 		queue = queue[1:]
 
-		for c := 0; c < AlphabetCapacity; c++ {
+		for c := range AlphabetCapacity {
 			childIdx := ac.nodes[currentState].child[c]
 			if childIdx == 0 {
 				continue
@@ -122,7 +122,7 @@ func (ac *AhoCorasick) Search(text string) []MatchRecord {
 	var records []MatchRecord
 	currentState := 0
 
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		charIdx := text[i]
 
 		// Regress through the failure chain upon a broken path.
