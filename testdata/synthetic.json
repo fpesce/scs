@@ -1,0 +1,6 @@
+{
+  "pat_str": "\\w+|\\S",
+  "special_tokens": {
+    "\u003c|synthetic_end|\u003e": 100
+  }
+}

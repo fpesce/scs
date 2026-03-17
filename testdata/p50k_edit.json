@@ -1,0 +1,9 @@
+{
+  "pat_str": "'(?:[sdmt]|ll|ve|re)| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+$|\\s+(?!\\S)|\\s",
+  "special_tokens": {
+    "\u003c|endoftext|\u003e": 50256,
+    "\u003c|fim_middle|\u003e": 50282,
+    "\u003c|fim_prefix|\u003e": 50281,
+    "\u003c|fim_suffix|\u003e": 50283
+  }
+}

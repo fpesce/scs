@@ -109,7 +109,7 @@ Ballpark figures for file size reduction (comparing the raw `.txt` input to the 
 
 * **~1,000 words:** ~0% reduction. The dataset is too small; the metadata footer overhead cancels out the overlap savings.
 * **~10,000 words:** ~36% reduction (e.g., 79 KB raw text reduces to ~51 KB).
-* **~100,000 words:** ~8% reduction (e.g., 834 KB raw text reduces to ~765 KB).
+* **~100,000 words:** ~39% reduction (e.g., 834 KB raw text reduces to ~595 KB).
 * **~1,000,000 words:** ~26% reduction (e.g., 8.5 MB raw text reduces to ~6.3 MB).
 * **Massive real-world datasets (~14,000,000 words, e.g., rockyou):** ~16% reduction (e.g., 140 MB raw text reduces to ~117.5 MB).
 

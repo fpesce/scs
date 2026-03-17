@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"index/suffixarray"
 	"runtime"
+	"strings"
 	"sync"
 	"unsafe"
 )
 
 // EliminateSubstrings removes any string that is entirely contained within
-// another string in the dataset. Uses a suffix array over a \n-delimited
+// another string in the dataset. Uses a suffix array over a delimiter-separated
 // buffer for O(N log N) matching with flat ~4x memory footprint.
 //
-// NOTE: \n is safe as the internal delimiter because ReadLines() splits on \n,
-// guaranteeing that individual words never contain \n. This prevents cross-word
-// matching in the suffix array. This is unrelated to the --sep flag, which
-// controls .scs output format.
+// The delimiter byte is dynamically chosen to be a value not present in any
+// input word, making this safe for arbitrary binary data (e.g. tiktoken tokens).
 //
 // Internal dedup prevents duplicate strings from causing false SA elimination.
 func EliminateSubstrings(uniqueStrings []string) []string {
@@ -40,25 +39,49 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 		return deduped
 	}
 
-	// 1. Calculate total length for pre-allocation.
+	// 1. Find a delimiter byte that does not appear in any word.
+	// This prevents cross-word matching in the suffix array and avoids
+	// false elimination when a word IS the delimiter byte itself
+	// (e.g. a literal "\n" token in tiktoken mode).
+	usedBytes := [256]bool{}
+	for _, s := range deduped {
+		for _, b := range []byte(s) {
+			usedBytes[b] = true
+		}
+	}
+	delim := byte(0xFF) // sentinel
+	found := false
+	for b := 0; b < 256; b++ {
+		if !usedBytes[byte(b)] {
+			delim = byte(b)
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Extremely rare: all 256 byte values used. Fall back to O(n²).
+		return eliminateSubstringsBrute(deduped)
+	}
+
+	// 2. Calculate total length for pre-allocation.
 	totalLen := 0
 	for _, s := range deduped {
 		totalLen += len(s) + 1
 	}
 
-	// 2. Build a single buffer containing all words delimited by \n.
+	// 3. Build a single buffer containing all words delimited by the chosen byte.
 	var buf bytes.Buffer
 	buf.Grow(totalLen)
 	for _, s := range deduped {
 		buf.WriteString(s)
-		buf.WriteByte('\n')
+		buf.WriteByte(delim)
 	}
 
-	// 3. Build a highly efficient Suffix Array (~4x memory footprint).
+	// 4. Build a highly efficient Suffix Array (~4x memory footprint).
 	sa := suffixarray.New(buf.Bytes())
 	swallowed := make([]bool, nd)
 
-	// 4. Concurrently lookup substrings using O(log N) operations.
+	// 5. Concurrently lookup substrings using O(log N) operations.
 	numWorkers := runtime.NumCPU()
 	chunkSize := (nd + numWorkers - 1) / numWorkers
 
@@ -93,7 +116,7 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 	}
 	wg.Wait()
 
-	// 5. Gather survivors while maintaining original chronological order.
+	// 6. Gather survivors while maintaining original chronological order.
 	survivors := make([]string, 0, nd)
 	for i, s := range deduped {
 		if !swallowed[i] {
@@ -101,5 +124,33 @@ func EliminateSubstrings(uniqueStrings []string) []string {
 		}
 	}
 
+	return survivors
+}
+
+// eliminateSubstringsBrute is an O(n²) fallback for the rare case where
+// all 256 byte values are used in the input, making suffix-array delimiter
+// selection impossible.
+func eliminateSubstringsBrute(words []string) []string {
+	swallowed := make([]bool, len(words))
+	for i, a := range words {
+		if swallowed[i] {
+			continue
+		}
+		for j, b := range words {
+			if i == j || swallowed[j] {
+				continue
+			}
+			if len(a) < len(b) && strings.Contains(b, a) {
+				swallowed[i] = true
+				break
+			}
+		}
+	}
+	survivors := make([]string, 0, len(words))
+	for i, s := range words {
+		if !swallowed[i] {
+			survivors = append(survivors, s)
+		}
+	}
 	return survivors
 }

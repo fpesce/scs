@@ -1,9 +1,15 @@
 export PATH := /usr/local/go/bin:/home/joke/go/bin:$(PATH)
 
-.PHONY: lint test e2etest
+.PHONY: lint test e2etest prep-data gen-testdata prod
 
 lint:
-	golangci-lint run ./...
+	golangci-lint run ./... -v
+
+prep-data:
+	bash scripts/prep_data.sh
+
+gen-testdata:
+	go run scripts/gen_testdata.go
 
 test:
 	CGO_ENABLED=1 go test -v -race ./...
@@ -32,3 +38,6 @@ e2etest:
 		ga_ratio=$$(awk "BEGIN {printf \"%.2f\", $$ga_size / $$txt_size * 100}"); \
 		echo "GA Size: $$txt_size B -> $$ga_size B ($$ga_ratio%)"; \
 	done
+
+prod:
+	GA_TIME=$(or $(GA_TIME),24h) bash scripts/prod.sh

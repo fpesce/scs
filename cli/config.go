@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -16,6 +17,9 @@ type BuildConfig struct {
 	DPLimit    int
 	Unordered  bool
 	Separator  string
+	SepBytes   []byte
+	Tiktoken   bool
+	Metadata   string
 	Verbose    bool
 	Profile    bool
 	GATime     time.Duration
@@ -90,6 +94,8 @@ func parseBuild(args []string) (*BuildConfig, error) {
 	fs.IntVar(&cfg.GAPop, "ga-pop", 0, "GA population size per island")
 	fs.IntVar(&cfg.GATourney, "ga-tourney", 0, "GA tournament size")
 	fs.IntVar(&cfg.GAStag, "ga-stag", 0, "GA stagnation threshold")
+	fs.BoolVar(&cfg.Tiktoken, "tiktoken", false, "Ingest .tiktoken base64+rank format")
+	fs.StringVar(&cfg.Metadata, "metadata", "", "Path to JSON metadata sidecar")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("parsing build flags: %w", err)
@@ -101,6 +107,14 @@ func parseBuild(args []string) (*BuildConfig, error) {
 	if cfg.OutputPath == "" {
 		return nil, errors.New("build: output path (-o) is required")
 	}
+
+	// Unescape the separator string (e.g. "\\n" → "\n", "\\0" → "\0").
+	unescaped, err := strconv.Unquote(`"` + cfg.Separator + `"`)
+	if err != nil {
+		// Fall back to the raw string if unquoting fails.
+		unescaped = cfg.Separator
+	}
+	cfg.SepBytes = []byte(unescaped)
 
 	return cfg, nil
 }

@@ -13,7 +13,7 @@ func TestEncodeUnordered_Simple(t *testing.T) {
 		"xyz": 10,
 	}
 
-	raw := EncodeUnordered(words, offsets)
+	raw, orderedWords := EncodeUnordered(words, offsets)
 
 	r := bytes.NewReader(raw)
 
@@ -75,6 +75,17 @@ func TestEncodeUnordered_Simple(t *testing.T) {
 	if delta3 != 10 {
 		t.Errorf("delta3 = %d, want 10", delta3)
 	}
+
+	// Verify orderedWords: sorted by offset → ab(0), cd(5), xyz(10)
+	wantOrdered := []string{"ab", "cd", "xyz"}
+	if len(orderedWords) != len(wantOrdered) {
+		t.Fatalf("orderedWords len = %d, want %d", len(orderedWords), len(wantOrdered))
+	}
+	for i, w := range orderedWords {
+		if w != wantOrdered[i] {
+			t.Errorf("orderedWords[%d] = %q, want %q", i, w, wantOrdered[i])
+		}
+	}
 }
 
 func TestEncodeUnordered_Deterministic(t *testing.T) {
@@ -90,7 +101,8 @@ func TestEncodeUnordered_Deterministic(t *testing.T) {
 	// Run 10 times, assert identical output.
 	var results [][]byte
 	for i := 0; i < 10; i++ {
-		results = append(results, EncodeUnordered(words, offsets))
+		raw, _ := EncodeUnordered(words, offsets)
+		results = append(results, raw)
 	}
 	for i := 1; i < len(results); i++ {
 		if !bytes.Equal(results[i], results[0]) {
@@ -103,7 +115,7 @@ func TestEncodeUnordered_SingleWord(t *testing.T) {
 	words := []string{"test"}
 	offsets := map[string]int{"test": 42}
 
-	raw := EncodeUnordered(words, offsets)
+	raw, _ := EncodeUnordered(words, offsets)
 
 	r := bytes.NewReader(raw)
 
@@ -120,5 +132,32 @@ func TestEncodeUnordered_SingleWord(t *testing.T) {
 	delta, _, _ := DecodeULEB128(r)
 	if delta != 42 {
 		t.Errorf("delta = %d, want 42", delta)
+	}
+}
+
+func TestEncodeUnordered_OrderedWords(t *testing.T) {
+	// Words with scrambled offsets to verify ordering.
+	words := []string{"aa", "bb", "cc", "xxx", "yyy"}
+	offsets := map[string]int{
+		"bb":  2,   // len=2, offset=2
+		"aa":  0,   // len=2, offset=0
+		"cc":  8,   // len=2, offset=8
+		"yyy": 20,  // len=3, offset=20
+		"xxx": 10,  // len=3, offset=10
+	}
+
+	_, orderedWords := EncodeUnordered(words, offsets)
+
+	// Expect: sorted by length ascending, then by offset within each group.
+	// len=2 group: aa(0), bb(2), cc(8)
+	// len=3 group: xxx(10), yyy(20)
+	want := []string{"aa", "bb", "cc", "xxx", "yyy"}
+	if len(orderedWords) != len(want) {
+		t.Fatalf("orderedWords len = %d, want %d", len(orderedWords), len(want))
+	}
+	for i, w := range orderedWords {
+		if w != want[i] {
+			t.Errorf("orderedWords[%d] = %q, want %q", i, w, want[i])
+		}
 	}
 }

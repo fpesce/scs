@@ -94,6 +94,40 @@ func TestReadLines_MissingFile(t *testing.T) {
 	}
 }
 
+func TestReadSeparated_BinarySafe(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "binary.dat")
+
+	sep := byte(0x1F) // Unit Separator
+	// Build payload: "hello\nworld" SEP "\x00data" SEP "end" SEP
+	// The embedded \n and \0 must survive.
+	payload := []byte{'h', 'e', 'l', 'l', 'o', '\n', 'w', 'o', 'r', 'l', 'd'}
+	payload = append(payload, sep)
+	payload = append(payload, '\x00', 'd', 'a', 't', 'a')
+	payload = append(payload, sep)
+	payload = append(payload, 'e', 'n', 'd')
+	payload = append(payload, sep)
+
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	got, err := ReadSeparated(path, []byte{sep})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"hello\nworld", "\x00data", "end"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d elements, want %d", len(got), len(want))
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("element %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestWriteResult(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "output.txt")

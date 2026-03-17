@@ -5,6 +5,7 @@
 *.scs
 scs
 scs-repomix.md
+proddata
 
 # vibecode artefacts
 prompts

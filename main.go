@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"sort"
 	"strings"
@@ -54,12 +55,33 @@ func runBuild(cfg *cli.BuildConfig) error {
 		defer pprof.StopCPUProfile()
 	}
 
-	lines, err := scsio.ReadLines(cfg.InputPath)
-	if err != nil {
-		return fmt.Errorf("reading input: %w", err)
+	// --- Input ingestion ---
+	var lines []string
+	var rankMap map[string]uint32
+
+	if cfg.Tiktoken {
+		var err error
+		lines, rankMap, err = scsio.ReadTiktoken(cfg.InputPath)
+		if err != nil {
+			return fmt.Errorf("reading tiktoken input: %w", err)
+		}
+		if cfg.Verbose {
+			fmt.Printf("Read %d tokens from %s (tiktoken mode)\n", len(lines), cfg.InputPath)
+		}
+	} else {
+		var err error
+		lines, err = scsio.ReadSeparated(cfg.InputPath, cfg.SepBytes)
+		if err != nil {
+			return fmt.Errorf("reading input: %w", err)
+		}
+		if cfg.Verbose {
+			fmt.Printf("Read %d lines from %s\n", len(lines), cfg.InputPath)
+		}
 	}
-	if cfg.Verbose {
-		fmt.Printf("Read %d lines from %s\n", len(lines), cfg.InputPath)
+
+	// Tiktoken mode forces unordered (delta-encoded offsets required for rank mapping).
+	if cfg.Tiktoken {
+		cfg.Unordered = true
 	}
 
 	// Phase 1A: Hash deduplication — get unique set for pipeline.
@@ -134,10 +156,11 @@ func runBuild(cfg *cli.BuildConfig) error {
 
 	// Generate the raw binary metadata footer.
 	var footer []byte
+	var orderedWords []string
 	if cfg.Unordered {
-		footer = format.EncodeUnordered(nonEmptyUnique, offsetMap)
+		footer, orderedWords = format.EncodeUnordered(nonEmptyUnique, offsetMap)
 	} else {
-		footer = format.EncodeOrdered(lines, offsetMap, len(masterString))
+		footer, _ = format.EncodeOrdered(lines, offsetMap, len(masterString))
 	}
 
 	// Calculate precise byte offset: 12 header bytes + len(superstring).
@@ -177,6 +200,29 @@ func runBuild(cfg *cli.BuildConfig) error {
 	if cfg.Verbose {
 		fmt.Printf("Final superstring: %d characters written to %s\n",
 			len(masterString), cfg.OutputPath)
+	}
+
+	// --- Tiktoken sidecars: .rank and .json ---
+	if cfg.Tiktoken && rankMap != nil {
+		basePath := strings.TrimSuffix(cfg.OutputPath, filepath.Ext(cfg.OutputPath))
+
+		rankPath := basePath + ".rank"
+		if err := format.WriteRankSidecar(rankPath, orderedWords, rankMap); err != nil {
+			return fmt.Errorf("writing rank sidecar: %w", err)
+		}
+		if cfg.Verbose {
+			fmt.Printf("Wrote rank sidecar: %s (%d entries)\n", rankPath, len(orderedWords))
+		}
+
+		if cfg.Metadata != "" {
+			jsonPath := basePath + ".json"
+			if err := format.WriteMetadataSidecar(jsonPath, cfg.Metadata); err != nil {
+				return fmt.Errorf("writing metadata sidecar: %w", err)
+			}
+			if cfg.Verbose {
+				fmt.Printf("Wrote metadata sidecar: %s\n", jsonPath)
+			}
+		}
 	}
 
 	return nil
@@ -275,13 +321,13 @@ func runMerge(cfg *cli.MergeConfig) error {
 				uniqueWords = append(uniqueWords, w.String)
 			}
 		}
-		footer = format.EncodeUnordered(uniqueWords, offsetMap)
+		footer, _ = format.EncodeUnordered(uniqueWords, offsetMap)
 	} else {
 		var chronoLines []string
 		for _, w := range allWords {
 			chronoLines = append(chronoLines, w.String)
 		}
-		footer = format.EncodeOrdered(chronoLines, offsetMap, len(combinedPayload))
+		footer, _ = format.EncodeOrdered(chronoLines, offsetMap, len(combinedPayload))
 	}
 
 	// Step 7: Calculate footer offset and build header.

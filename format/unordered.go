@@ -5,10 +5,16 @@ import (
 	"sort"
 )
 
+type wordOffset struct {
+	word   string
+	offset int
+}
+
 // EncodeUnordered generates the UNORDERED mode metadata footer as raw bytes.
 // Words are grouped by ascending length, offsets within each group are
 // delta-encoded after sorting them ascending.
-func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) []byte {
+// Returns the footer bytes and the exact sequence of words in offset order.
+func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) ([]byte, []string) {
 	// Group words by length.
 	lengthGroups := make(map[int][]string)
 	for _, w := range uniqueWords {
@@ -23,29 +29,33 @@ func EncodeUnordered(uniqueWords []string, offsetMap map[string]int) []byte {
 	sort.Ints(lengths)
 
 	var buf bytes.Buffer
+	var orderedWords []string
 
 	for _, wordLen := range lengths {
 		words := lengthGroups[wordLen]
 
-		// Extract and sort absolute offsets for this group.
-		offsets := make([]int, 0, len(words))
-		for _, w := range words {
-			offsets = append(offsets, offsetMap[w])
+		// Build wordOffset pairs for stable sorting by offset.
+		pairs := make([]wordOffset, len(words))
+		for i, w := range words {
+			pairs[i] = wordOffset{word: w, offset: offsetMap[w]}
 		}
-		sort.Ints(offsets)
+		sort.Slice(pairs, func(i, j int) bool {
+			return pairs[i].offset < pairs[j].offset
+		})
 
 		// Write ULEB128(Word_Length) and ULEB128(Total_Words_In_Group).
 		buf.Write(EncodeULEB128(uint64(wordLen)))
-		buf.Write(EncodeULEB128(uint64(len(words))))
+		buf.Write(EncodeULEB128(uint64(len(pairs))))
 
-		// Write delta-encoded offsets.
+		// Write delta-encoded offsets and track word sequence.
 		prev := 0
-		for _, offset := range offsets {
-			delta := offset - prev
+		for _, p := range pairs {
+			delta := p.offset - prev
 			buf.Write(EncodeULEB128(uint64(delta)))
-			prev = offset
+			prev = p.offset
+			orderedWords = append(orderedWords, p.word)
 		}
 	}
 
-	return buf.Bytes()
+	return buf.Bytes(), orderedWords
 }

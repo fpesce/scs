@@ -14,7 +14,7 @@ func TestEncodeOrdered_Simple(t *testing.T) {
 	}
 	supLen := 13 // "helloworld" + "foo"
 
-	raw := EncodeOrdered(lines, offsets, supLen)
+	raw, _ := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
@@ -41,7 +41,7 @@ func TestEncodeOrdered_EmptyLines(t *testing.T) {
 	}
 	supLen := 10
 
-	raw := EncodeOrdered(lines, offsets, supLen)
+	raw, _ := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestEncodeOrdered_SingleLine(t *testing.T) {
 	offsets := map[string]int{"test": 0}
 	supLen := 4
 
-	raw := EncodeOrdered(lines, offsets, supLen)
+	raw, _ := EncodeOrdered(lines, offsets, supLen)
 
 	tuples, err := DecodeOrderedWithContext(raw, supLen)
 	if err != nil {
